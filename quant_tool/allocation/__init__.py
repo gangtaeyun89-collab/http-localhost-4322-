@@ -13,6 +13,12 @@ from quant_tool.allocation.construction import (
     rebalancing_trades,
     strategic_weights,
 )
+from quant_tool.allocation.report import (
+    PortfolioReport,
+    Sleeve,
+    SleeveReport,
+    build_report,
+)
 
 __all__ = [
     "AllocationResult",
@@ -21,4 +27,8 @@ __all__ = [
     "inverse_volatility_weights",
     "minimum_variance_weights",
     "rebalancing_trades",
+    "PortfolioReport",
+    "Sleeve",
+    "SleeveReport",
+    "build_report",
 ]
