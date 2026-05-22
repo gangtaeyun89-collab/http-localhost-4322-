@@ -110,6 +110,8 @@ class KalmanHedge:
         """
         if len(base) != len(quote):
             raise ValueError("base and quote must have equal length")
+        if not base.index.equals(quote.index):
+            raise ValueError("base and quote must share the same index")
         if len(base) < 2:
             raise ValueError("need at least 2 observations")
 
@@ -120,8 +122,11 @@ class KalmanHedge:
         q_beta = self.delta / (1.0 - self.delta)
         trans_cov = np.diag([q_beta, q_beta * self.alpha_ratio])
 
-        # State [beta, alpha] and its covariance. The diffuse prior lets the
-        # first handful of observations pin the state down quickly.
+        # State [beta, alpha] and its covariance. The prior is uninformative
+        # (zero mean, unit variance). Because each bar supplies only one
+        # observation for two states, beta needs a warm-up of a few hundred
+        # bars to settle -- the backtest excludes that warm-up via the z-score
+        # lookback, and callers should not trust the earliest estimates.
         state = np.zeros(2)
         cov = np.eye(2) * 1.0
 

@@ -57,6 +57,9 @@ def _screen(prices: pd.DataFrame) -> None:
     except ImportError:
         log.warning("statsmodels not installed -- skipping cointegration screen")
         return
+    except Exception as exc:  # degenerate input (zero variance, too short, ...)
+        log.warning("cointegration screen skipped: %s", exc)
+        return
     verdict = "COINTEGRATED" if result.is_cointegrated else "not cointegrated"
     log.info(
         "Cointegration screen: p=%.4f, half-life=%.1f bars -> %s",
@@ -95,7 +98,13 @@ def main() -> None:
 
     methods = ["ols", "kalman"] if args.compare else [config.hedge_method]
     for method in methods:
-        result = run_backtest(prices, replace(config, hedge_method=method))
+        try:
+            result = run_backtest(prices, replace(config, hedge_method=method))
+        except ValueError as exc:
+            # One method failing (e.g. too few bars for the OLS warm-up) must
+            # not abort the others in a --compare run.
+            log.warning("skipping %s: %s", method, exc)
+            continue
         print("\n" + "=" * 48)
         print(result.describe())
     print("=" * 48)

@@ -78,6 +78,10 @@ class BacktestConfig:
             raise ValueError("hedge_method must be 'ols' or 'kalman'")
         if self.hedge_lookback < 2:
             raise ValueError("hedge_lookback must be >= 2")
+        if self.vol_lookback < 2:
+            raise ValueError("vol_lookback must be >= 2")
+        if self.bars_per_year <= 0:
+            raise ValueError("bars_per_year must be positive")
         if self.target_volatility is not None and self.target_volatility <= 0:
             raise ValueError("target_volatility must be positive or None")
         if self.max_leverage <= 0:

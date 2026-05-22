@@ -28,10 +28,16 @@ def test_rolling_ols_warmup_is_nan():
 
 @pytest.mark.parametrize("method", ["ols", "kalman"])
 def test_estimate_hedge_columns(method):
-    prices = generate_cointegrated_pair(n=500, seed=6)
-    frame = estimate_hedge(prices["base"], prices["quote"], method, zscore_lookback=60)
+    # Enough bars to clear the OLS hedge_lookback (500) plus the z-score
+    # window, so the test actually exercises a usable trading signal.
+    prices = generate_cointegrated_pair(n=1200, seed=6)
+    frame = estimate_hedge(
+        prices["base"], prices["quote"], method,
+        zscore_lookback=60, hedge_lookback=500,
+    )
     assert list(frame.columns) == ["beta", "alpha", "spread", "zscore"]
     assert len(frame) == len(prices)
+    assert frame["zscore"].notna().sum() > 100
 
 
 def test_estimate_hedge_rejects_unknown_method():

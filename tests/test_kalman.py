@@ -1,6 +1,7 @@
 """Tests for the Kalman dynamic hedge filter."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from quant_tool.ai.kalman_filter import KalmanHedge
@@ -45,3 +46,12 @@ def test_rejects_bad_parameters():
         KalmanHedge(delta=0.0)
     with pytest.raises(ValueError):
         KalmanHedge(obs_cov=-1.0)
+
+
+def test_rejects_misaligned_index():
+    """Equal-length but index-misaligned series would zip by position and
+    silently produce a wrong hedge ratio -- the filter must reject them."""
+    base = pd.Series([10.0, 11.0, 12.0], index=[0, 1, 2])
+    quote = pd.Series([5.0, 5.5, 6.0], index=[100, 101, 102])
+    with pytest.raises(ValueError):
+        KalmanHedge().run(base, quote)

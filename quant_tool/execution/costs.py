@@ -34,6 +34,8 @@ class CostModel:
         ``d`` is ``|d| * cost_rate`` as a fraction of deployed capital. The very
         first bar's move counts as the cost of establishing the book.
         """
+        if positions.empty:
+            return positions.astype(float)
         turnover = positions.diff()
         turnover.iloc[0] = positions.iloc[0]
         return turnover.abs() * self.config.cost_rate

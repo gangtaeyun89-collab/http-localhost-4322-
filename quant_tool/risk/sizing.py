@@ -36,6 +36,8 @@ def vol_target_multiplier(
     if target_annual_vol <= 0:
         raise ValueError("target_annual_vol must be positive")
     vol = realized_volatility(spread_returns, window, bars_per_year)
-    multiplier = (target_annual_vol / vol).clip(upper=max_leverage)
-    # Until enough history exists, fall back to unit size.
+    # A zero-volatility window gives no usable estimate; dividing by it would
+    # otherwise pin the size at max_leverage right after a dead-volatility
+    # stretch. Treat it (and the warm-up NaNs) as unit size instead.
+    multiplier = (target_annual_vol / vol.where(vol > 0)).clip(upper=max_leverage)
     return multiplier.shift(1).fillna(1.0)

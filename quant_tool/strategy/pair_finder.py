@@ -15,6 +15,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from quant_tool.strategy.spread import ols_hedge_ratio
+
 
 @dataclass(frozen=True)
 class CointegrationResult:
@@ -68,10 +70,16 @@ def cointegration_test(
         ) from exc
 
     aligned = pd.concat([base, quote], axis=1).dropna()
-    statistic, pvalue, _ = coint(
-        np.log(aligned.iloc[:, 0]), np.log(aligned.iloc[:, 1])
-    )
-    spread = np.log(aligned.iloc[:, 0]) - np.log(aligned.iloc[:, 1])
+    log_base = np.log(aligned.iloc[:, 0])
+    log_quote = np.log(aligned.iloc[:, 1])
+    statistic, pvalue, _ = coint(log_base, log_quote)
+
+    # The half-life must be measured on the *cointegrating* residual, not on a
+    # raw log-ratio: with a hedge ratio far from 1.0 the ratio keeps a
+    # non-stationary component and the half-life is badly inflated. Estimate
+    # the hedge ratio (the Engle-Granger first stage) and use that spread.
+    beta, alpha = ols_hedge_ratio(aligned.iloc[:, 0], aligned.iloc[:, 1])
+    spread = log_base - beta * log_quote - alpha
     return CointegrationResult(
         base=base_name,
         quote=quote_name,
@@ -87,13 +95,20 @@ def find_cointegrated_pairs(
     """Screen every column pair in ``prices`` for cointegration.
 
     ``prices`` holds one price series per column. Returns the cointegrated
-    pairs sorted by p-value (strongest evidence first).
+    pairs sorted by p-value (strongest evidence first). A pair whose test fails
+    on degenerate input (zero variance, too short) is skipped rather than
+    aborting the whole screen.
     """
     results: list[CointegrationResult] = []
     for col_a, col_b in itertools.combinations(prices.columns, 2):
-        result = cointegration_test(
-            prices[col_a], prices[col_b], base_name=col_a, quote_name=col_b
-        )
+        try:
+            result = cointegration_test(
+                prices[col_a], prices[col_b], base_name=col_a, quote_name=col_b
+            )
+        except ImportError:
+            raise  # missing statsmodels is a setup error, not a bad pair
+        except Exception:
+            continue  # degenerate pair: skip, keep screening the rest
         if result.pvalue < pvalue_threshold:
             results.append(result)
     return sorted(results, key=lambda r: r.pvalue)

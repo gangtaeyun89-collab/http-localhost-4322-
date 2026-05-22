@@ -97,6 +97,10 @@ def run_backtest(prices: pd.DataFrame, config: BacktestConfig) -> BacktestResult
 
     # --- spread return earned by holding one unit of long-spread exposure ----
     # beta is shifted: the hedge ratio used over bar t is the one known at t-1.
+    # The leg returns are divided by gross exposure ($1 of base + $|beta| of
+    # quote), so every return, the equity curve and the drawdown are expressed
+    # per unit of gross capital deployed -- a conservative, self-consistent
+    # basis. Sharpe is unaffected (it is scale-invariant).
     beta_used = hedge["beta"].shift(1)
     gross_exposure = 1.0 + beta_used.abs()
     spread_return = (
@@ -147,6 +151,6 @@ def run_backtest(prices: pd.DataFrame, config: BacktestConfig) -> BacktestResult
         }
     )
     stats = performance_summary(
-        net_return, equity, held_position, config.bars_per_year
+        net_return, equity, position, config.bars_per_year
     )
     return BacktestResult(bars=bars, stats=stats, config=config)

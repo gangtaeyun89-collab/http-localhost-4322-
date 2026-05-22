@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from quant_tool.backtest.engine import run_backtest
-from quant_tool.backtest.metrics import max_drawdown, sharpe_ratio
+from quant_tool.backtest.metrics import cagr, max_drawdown, sharpe_ratio
 from quant_tool.config.settings import (
     BacktestConfig,
     CostConfig,
@@ -16,6 +16,7 @@ from quant_tool.config.settings import (
 )
 from quant_tool.data.ingestion import generate_cointegrated_pair
 from quant_tool.execution.costs import CostModel
+from quant_tool.risk.sizing import vol_target_multiplier
 
 PAIR = PairConfig(base="ETH/USDT", quote="BTC/USDT")
 
@@ -100,3 +101,42 @@ def test_metrics_basic_properties():
     flat = pd.Series([100.0] * 10)
     assert max_drawdown(flat) == pytest.approx(0.0)
     assert sharpe_ratio(pd.Series([0.0] * 10), 8760) == 0.0
+
+
+def test_cagr_handles_capital_wipeout():
+    """A negative terminal equity must report -100%, not NaN."""
+    wiped = pd.Series([10_000.0, 8_000.0, -500.0])
+    assert cagr(wiped, bars_per_year=8760) == -1.0
+
+
+def test_trade_stats_account_for_every_cost():
+    """Trade-level returns must sum to the total net return, so the entry
+    transaction cost (charged while held_position is still flat) is not lost."""
+    prices = generate_cointegrated_pair(n=2000, seed=21)
+    result = run_backtest(prices, _config(cost=CostConfig(30.0, 15.0)))
+    stats = result.stats
+    assert stats["n_trades"] > 0
+    trade_total = stats["avg_trade_return"] * stats["n_trades"]
+    assert trade_total == pytest.approx(result.bars["net_return"].sum())
+
+
+def test_vol_target_neutral_on_zero_volatility():
+    """A dead-volatility window must give unit size, never max leverage."""
+    flat = pd.Series([0.001] * 300)  # constant returns -> zero rolling std
+    mult = vol_target_multiplier(
+        flat, target_annual_vol=0.15, window=100,
+        bars_per_year=8760, max_leverage=3.0,
+    )
+    assert (mult == 1.0).all()
+
+
+def test_config_rejects_invalid_risk_params():
+    with pytest.raises(ValueError):
+        BacktestConfig(pair=PAIR, vol_lookback=1)
+    with pytest.raises(ValueError):
+        BacktestConfig(pair=PAIR, bars_per_year=0)
+
+
+def test_trade_cost_handles_empty_series():
+    model = CostModel(CostConfig(), bars_per_year=8760)
+    assert model.trade_cost(pd.Series([], dtype=float)).empty
