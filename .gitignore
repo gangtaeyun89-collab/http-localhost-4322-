@@ -13,4 +13,5 @@ config/credentials.yaml
 
 # Data and run artefacts
 data/storage/*.parquet
+market_data/
 *.log
