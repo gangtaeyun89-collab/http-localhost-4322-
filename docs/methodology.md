@@ -250,7 +250,7 @@ roadmap:
 |---|---|---|
 | 1. Cointegration | `strategy/pair_finder.py` — `cointegration_test` (Engle-Granger + ADF via `statsmodels`) | Implemented full-sample. **Roadmap:** rolling-window re-testing. |
 | 2. OU process | `strategy/pair_finder.py` — `half_life` (AR(1) fit) | Half-life implemented. **Roadmap:** full $(\theta, \mu, \sigma)$ estimation. |
-| 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. **Roadmap:** EM tuning of $Q/R$. |
+| 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. `KalmanHedge.fit` tunes the drift rate $\delta$ by maximum likelihood (the prediction-error decomposition of the data likelihood), exposed via `run_backtest.py --fit-kalman`. |
 | 4. Entry/exit | `strategy/signals.py` — `generate_positions` | Fixed z-score thresholds with a stop. **Roadmap:** Bertram thresholds + a backtest grid search. |
 | 5. Position sizing | `risk/sizing.py` — `vol_target_multiplier` | Volatility targeting (the alternative). **Roadmap:** fractional Kelly + Ledoit-Wolf covariance. |
 | 6. Pair discovery | `strategy/pair_finder.py` — `find_cointegrated_pairs` | Brute-force over all column pairs. **Roadmap:** correlation-distance clustering then Benjamini-Hochberg FDR. |

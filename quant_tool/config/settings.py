@@ -67,6 +67,7 @@ class BacktestConfig:
     cost: CostConfig = field(default_factory=CostConfig)
     hedge_method: str = "kalman"  # "ols" or "kalman"
     hedge_lookback: int = 500  # OLS hedge-ratio window; unused by Kalman
+    kalman_delta: float = 1e-7  # Kalman hedge-drift rate; KalmanHedge.fit tunes it
     bars_per_year: int = 24 * 365
     initial_capital: float = 10_000.0
     target_volatility: float | None = None  # annualised; None disables sizing
@@ -78,6 +79,8 @@ class BacktestConfig:
             raise ValueError("hedge_method must be 'ols' or 'kalman'")
         if self.hedge_lookback < 2:
             raise ValueError("hedge_lookback must be >= 2")
+        if not 0.0 < self.kalman_delta < 1.0:
+            raise ValueError("kalman_delta must be in (0, 1)")
         if self.vol_lookback < 2:
             raise ValueError("vol_lookback must be >= 2")
         if self.bars_per_year <= 0:

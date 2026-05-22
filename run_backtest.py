@@ -30,6 +30,7 @@ from dataclasses import replace
 
 import pandas as pd
 
+from quant_tool.ai.kalman_filter import KalmanHedge
 from quant_tool.backtest.engine import run_backtest
 from quant_tool.config.settings import BacktestConfig, PairConfig, load_config
 from quant_tool.data.features import align_prices
@@ -106,6 +107,12 @@ def main() -> None:
     parser.add_argument(
         "--compare", action="store_true", help="run both OLS and Kalman side by side"
     )
+    parser.add_argument(
+        "--fit-kalman",
+        action="store_true",
+        help="tune the Kalman delta by maximum likelihood "
+        "(prediction-optimal, not necessarily P&L-optimal -- see KalmanHedge.fit)",
+    )
     args = parser.parse_args()
 
     if bool(args.base_csv) != bool(args.quote_csv):
@@ -126,6 +133,16 @@ def main() -> None:
     _screen(prices)
 
     methods = ["ols", "kalman"] if args.compare else [config.hedge_method]
+
+    if args.fit_kalman and "kalman" in methods:
+        fitted = KalmanHedge.fit(prices["base"], prices["quote"])
+        log.info(
+            "Fitted Kalman delta by maximum likelihood: %.2e (default was %.2e)",
+            fitted.delta,
+            config.kalman_delta,
+        )
+        config = replace(config, kalman_delta=fitted.delta)
+
     for method in methods:
         try:
             result = run_backtest(prices, replace(config, hedge_method=method))

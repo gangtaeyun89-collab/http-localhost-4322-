@@ -92,6 +92,7 @@ def run_backtest(prices: pd.DataFrame, config: BacktestConfig) -> BacktestResult
         config.hedge_method,
         config.signal.zscore_lookback,
         config.hedge_lookback,
+        kalman_delta=config.kalman_delta,
     )
     target_position = generate_positions(hedge["zscore"], config.signal)
 

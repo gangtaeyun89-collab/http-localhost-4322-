@@ -29,6 +29,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+_LOG_2PI = float(np.log(2.0 * np.pi))
+
 
 @dataclass(frozen=True)
 class KalmanResult:
@@ -41,6 +43,8 @@ class KalmanResult:
     spread          innovation e_t -- the tradable, hedge-adjusted residual
     innovation_std  sqrt(Q_t), the predicted standard deviation of ``spread``
     zscore          spread / innovation_std, a self-normalising signal
+    log_likelihood  total data log-likelihood (prediction-error decomposition),
+                    the objective :meth:`KalmanHedge.fit` maximises
     """
 
     beta: pd.Series
@@ -48,6 +52,7 @@ class KalmanResult:
     spread: pd.Series
     innovation_std: pd.Series
     zscore: pd.Series
+    log_likelihood: float
 
     def to_frame(self) -> pd.DataFrame:
         return pd.DataFrame(
@@ -134,6 +139,7 @@ class KalmanHedge:
         alpha = np.empty(n)
         spread = np.empty(n)
         innov_std = np.empty(n)
+        log_likelihood = 0.0
 
         for t in range(n):
             obs_matrix = np.array([log_quote[t], 1.0])
@@ -145,6 +151,12 @@ class KalmanHedge:
             prediction = obs_matrix @ state
             error = log_base[t] - prediction
             innov_var = obs_matrix @ cov_pred @ obs_matrix + self.obs_cov
+
+            # Prediction-error decomposition: each innovation is Gaussian with
+            # variance innov_var, so the data log-likelihood accumulates here.
+            log_likelihood += -0.5 * (
+                _LOG_2PI + np.log(innov_var) + error * error / innov_var
+            )
 
             # Update with the Kalman gain.
             gain = cov_pred @ obs_matrix / innov_var
@@ -165,4 +177,44 @@ class KalmanHedge:
             spread=spread_s,
             innovation_std=innov_s,
             zscore=(spread_s / innov_s).rename("zscore"),
+            log_likelihood=float(log_likelihood),
         )
+
+    @classmethod
+    def fit(
+        cls,
+        base: pd.Series,
+        quote: pd.Series,
+        obs_cov: float = 1e-3,
+        alpha_ratio: float = 0.01,
+        delta_grid: np.ndarray | None = None,
+    ) -> "KalmanHedge":
+        """Estimate ``delta`` by maximum likelihood and return a fitted filter.
+
+        The filter yields the data log-likelihood for free via the
+        prediction-error decomposition. This evaluates it across a log-spaced
+        grid of ``delta`` values and keeps the maximiser.
+
+        Caveat -- the objective is one-step *prediction* accuracy of the base
+        leg, not strategy P&L. The likelihood-optimal delta tracks the hedge
+        ratio aggressively, which whitens the spread and can weaken the
+        mean-reversion signal the strategy actually trades. Treat the result as
+        a diagnostic and a starting point; for a trading strategy, also
+        validate delta on backtest net Sharpe.
+
+        Tune on a *training* window and evaluate on a later one: fitting
+        ``delta`` on the same bars you backtest is a mild in-sample bias.
+        """
+        if delta_grid is None:
+            delta_grid = np.logspace(-9, -2, 36)
+
+        best_delta = float(delta_grid[0])
+        best_ll = -np.inf
+        for d in delta_grid:
+            result = cls(
+                delta=float(d), obs_cov=obs_cov, alpha_ratio=alpha_ratio
+            ).run(base, quote)
+            if result.log_likelihood > best_ll:
+                best_ll = result.log_likelihood
+                best_delta = float(d)
+        return cls(delta=best_delta, obs_cov=obs_cov, alpha_ratio=alpha_ratio)

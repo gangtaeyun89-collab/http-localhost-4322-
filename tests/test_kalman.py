@@ -55,3 +55,34 @@ def test_rejects_misaligned_index():
     quote = pd.Series([5.0, 5.5, 6.0], index=[100, 101, 102])
     with pytest.raises(ValueError):
         KalmanHedge().run(base, quote)
+
+
+def test_log_likelihood_is_finite():
+    prices = generate_cointegrated_pair(n=800, seed=40)
+    result = KalmanHedge().run(prices["base"], prices["quote"])
+    assert np.isfinite(result.log_likelihood)
+
+
+def test_fit_beats_hand_picked_extremes():
+    """The maximum-likelihood delta must outscore deliberately bad values."""
+    prices = generate_cointegrated_pair(n=2000, beta_drift_vol=0.001, seed=41)
+    base, quote = prices["base"], prices["quote"]
+
+    fitted = KalmanHedge.fit(base, quote)
+    fitted_ll = fitted.run(base, quote).log_likelihood
+    too_slow = KalmanHedge(delta=1e-9).run(base, quote).log_likelihood
+    too_fast = KalmanHedge(delta=1e-2).run(base, quote).log_likelihood
+
+    assert fitted_ll > too_slow
+    assert fitted_ll > too_fast
+    assert 0.0 < fitted.delta < 1.0
+
+
+def test_fit_adapts_delta_to_drift():
+    """A faster-drifting hedge ratio should call for a faster-adapting filter."""
+    static = generate_cointegrated_pair(n=3000, beta_drift_vol=0.0, seed=42)
+    drifting = generate_cointegrated_pair(n=3000, beta_drift_vol=0.003, seed=42)
+
+    static_fit = KalmanHedge.fit(static["base"], static["quote"])
+    drifting_fit = KalmanHedge.fit(drifting["base"], drifting["quote"])
+    assert drifting_fit.delta >= static_fit.delta
