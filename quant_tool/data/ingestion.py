@@ -184,3 +184,56 @@ def generate_cointegrated_pair(
     return pd.DataFrame(
         {"base": np.exp(log_base), "quote": np.exp(log_quote)}, index=index
     )
+
+
+def generate_universe(
+    n_clusters: int = 3,
+    assets_per_cluster: int = 4,
+    n_noise_assets: int = 3,
+    n: int = 2500,
+    cluster_trend_vol: float = 0.020,
+    idio_halflife: float = 30.0,
+    idio_vol: float = 0.008,
+    start_price: float = 100.0,
+    seed: int | None = 42,
+) -> pd.DataFrame:
+    """Synthesise a universe of assets with embedded cointegrated clusters.
+
+    Each cluster shares one common stochastic trend; an asset's log price is
+    that trend (scaled by an asset-specific loading) plus a stationary
+    Ornstein-Uhlenbeck idiosyncratic term. So *every pair within a cluster is
+    cointegrated* -- the common trend cancels in the right linear combination
+    -- while assets in different clusters, and the extra pure-random-walk noise
+    assets, are not.
+
+    Columns are named ``c{cluster}_a{asset}`` (and ``noise_{k}``) so callers
+    and tests can recover the ground-truth structure. This is the controlled
+    input for the pair-discovery pipeline.
+    """
+    if min(n_clusters, assets_per_cluster) < 1:
+        raise ValueError("n_clusters and assets_per_cluster must be >= 1")
+    rng = np.random.default_rng(seed)
+    index = pd.date_range("2023-01-01", periods=n, freq="h", tz="UTC")
+    phi = 0.5 ** (1.0 / idio_halflife)  # OU decay of the idiosyncratic term
+
+    def _ou() -> np.ndarray:
+        path = np.zeros(n)
+        shocks = rng.normal(0.0, idio_vol, size=n)
+        for t in range(1, n):
+            path[t] = phi * path[t - 1] + shocks[t]
+        return path
+
+    columns: dict[str, np.ndarray] = {}
+    for c in range(n_clusters):
+        trend = np.cumsum(rng.normal(0.0, cluster_trend_vol, size=n))
+        for a in range(assets_per_cluster):
+            loading = rng.uniform(0.7, 1.3)
+            level = np.log(start_price) + rng.uniform(-0.3, 0.3)
+            columns[f"c{c}_a{a}"] = np.exp(level + loading * trend + _ou())
+
+    for k in range(n_noise_assets):
+        walk = np.cumsum(rng.normal(0.0, cluster_trend_vol, size=n))
+        level = np.log(start_price) + rng.uniform(-0.3, 0.3)
+        columns[f"noise_{k}"] = np.exp(level + walk)
+
+    return pd.DataFrame(columns, index=index)

@@ -1,3 +1,9 @@
+from quant_tool.strategy.discovery import (
+    DiscoveryResult,
+    cluster_assets,
+    correlation_distance,
+    discover_pairs,
+)
 from quant_tool.strategy.ou_process import OUParams, fit_ou_process
 from quant_tool.strategy.pair_finder import (
     CointegrationResult,
@@ -19,6 +25,10 @@ __all__ = [
     "cointegration_test",
     "find_cointegrated_pairs",
     "half_life",
+    "DiscoveryResult",
+    "cluster_assets",
+    "correlation_distance",
+    "discover_pairs",
     "generate_positions",
     "estimate_hedge",
     "ols_hedge_ratio",

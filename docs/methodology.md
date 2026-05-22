@@ -252,8 +252,8 @@ roadmap:
 | 2. OU process | `strategy/ou_process.py` — `fit_ou_process` | Full $(\theta, \mu, \sigma)$, half-life and equilibrium std estimated from the AR(1) form; `OUParams.is_tradable` gates a pair on its half-life. `half_life` delegates here. |
 | 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. `KalmanHedge.fit` tunes the drift rate $\delta$ by maximum likelihood (the prediction-error decomposition of the data likelihood), exposed via `run_backtest.py --fit-kalman`. |
 | 4. Entry/exit | `strategy/signals.py` — `generate_positions` | Fixed z-score thresholds with a stop; `backtest/walk_forward.py` provides honest per-window grid search over the thresholds. **Roadmap:** Bertram analytic thresholds. |
-| 5. Position sizing | `risk/sizing.py` — `vol_target_multiplier` | Volatility targeting (the alternative). **Roadmap:** fractional Kelly + Ledoit-Wolf covariance. |
-| 6. Pair discovery | `strategy/pair_finder.py` — `find_cointegrated_pairs` | Brute-force over all column pairs. **Roadmap:** correlation-distance clustering then Benjamini-Hochberg FDR. |
+| 5. Position sizing | `risk/sizing.py`, `risk/portfolio.py` | Per-pair volatility targeting (`vol_target_multiplier`); portfolio allocation via `ledoit_wolf_covariance` + fractional-Kelly `kelly_weights`, driven causally by `backtest/portfolio.py`. |
+| 6. Pair discovery | `strategy/discovery.py` — `discover_pairs` | Correlation-distance clustering, within-cluster cointegration, then Benjamini-Hochberg FDR control. `find_cointegrated_pairs` keeps the brute-force option. |
 
 ---
 
@@ -281,3 +281,25 @@ Building this surfaced two concrete lessons, both now documented in code:
   better. This is why `walk_forward` performs no tuning by default.
 
 Run it with `python run_backtest.py --walk-forward`.
+
+---
+
+## From one pair to a book — the portfolio pipeline
+
+A single pair is a thin, lumpy edge. The methodology's questions 5 and 6 are
+about trading *many* pairs as a diversified book, which the toolkit now does
+end to end:
+
+1. `data.generate_universe` builds (or you load) a universe of assets.
+2. `strategy.discovery.discover_pairs` runs the question-6 pipeline —
+   correlation-distance clustering, within-cluster cointegration, BH-FDR — and
+   returns the surviving pairs.
+3. `backtest.portfolio.portfolio_backtest` backtests each pair independently,
+   then splits capital across them with fractional-Kelly weights. The weights
+   are re-estimated on a rolling trailing window (Ledoit-Wolf covariance, so
+   `Sigma^-1` stays well-conditioned) and held forward — never fitted on the
+   bars they are scored against.
+
+`python run_portfolio.py` runs the whole chain on a synthetic universe.
+Diversifying across the discovered pairs is what turns a noisy single-pair
+edge into a smoother portfolio equity curve.
