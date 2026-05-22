@@ -1,0 +1,25 @@
+# Example backtest configuration.
+# Run with:  python run_backtest.py --config quant_tool/config/pairs.yaml
+pair:
+  base: ETH/USDT
+  quote: BTC/USDT
+  timeframe: 1h
+
+signal:
+  zscore_lookback: 60   # rolling window (bars) for the z-score signal
+  entry_z: 2.0          # open a spread position when |z| crosses this
+  exit_z: 0.5           # close back toward the mean inside this band
+  stop_z: 4.0           # hard stop: flatten if the spread keeps diverging
+
+cost:
+  taker_fee_bps: 6.0
+  slippage_bps: 2.0
+  funding_bps_per_day: 0.0
+
+hedge_method: kalman    # "ols" (rolling regression) or "kalman" (adaptive)
+hedge_lookback: 500     # OLS hedge-ratio window; ignored by the Kalman method
+bars_per_year: 8760
+initial_capital: 10000.0
+target_volatility: 0.15 # annualised risk target; remove to disable sizing
+vol_lookback: 100
+max_leverage: 3.0

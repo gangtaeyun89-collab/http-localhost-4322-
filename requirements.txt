@@ -1,0 +1,12 @@
+# Core (required)
+numpy>=1.24
+pandas>=2.0
+
+# Optional -- the toolkit degrades gracefully when these are absent:
+statsmodels>=0.14   # cointegration testing in strategy/pair_finder.py
+pyyaml>=6.0         # YAML config loading in config/settings.py
+ccxt>=4.0           # live exchange data in data/ingestion.py
+pyarrow>=14.0       # Parquet candle files in data/ingestion.load_ohlcv
+
+# Development
+pytest>=7.0

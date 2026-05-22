@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Credentials and secrets -- never commit exchange API keys
+.env
+config/credentials.yaml
+*.key
+
+# Data and run artefacts
+data/storage/*.parquet
+*.log
