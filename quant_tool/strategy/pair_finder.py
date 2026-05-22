@@ -100,3 +100,44 @@ def find_cointegrated_pairs(
         if result.pvalue < pvalue_threshold:
             results.append(result)
     return sorted(results, key=lambda r: r.pvalue)
+
+
+def rolling_cointegration(
+    base: pd.Series,
+    quote: pd.Series,
+    window: int,
+    step: int | None = None,
+) -> pd.DataFrame:
+    """Re-test cointegration on a rolling window.
+
+    Cointegration in crypto decays fast: a pair that is stationary over a long
+    sample can be dead in the last month. This slides a ``window``-bar window
+    forward in ``step`` increments and re-runs the Engle-Granger test, so the
+    *persistence* of the relationship is visible -- not just one full-sample
+    verdict.
+
+    Returns a DataFrame indexed by each window's end timestamp, with columns
+    ``pvalue``, ``half_life`` and ``is_cointegrated``. ``step`` defaults to a
+    quarter of the window; a very small ``step`` is accurate but slow.
+    """
+    aligned = pd.concat([base, quote], axis=1).dropna()
+    if window < 20:
+        raise ValueError("window must be >= 20 bars")
+    if window > len(aligned):
+        raise ValueError(f"window {window} exceeds the {len(aligned)} aligned bars")
+    if step is None:
+        step = max(1, window // 4)
+    if step < 1:
+        raise ValueError("step must be >= 1")
+
+    records: list[tuple[float, float, bool]] = []
+    index: list = []
+    for end in range(window, len(aligned) + 1, step):
+        window_slice = aligned.iloc[end - window : end]
+        result = cointegration_test(window_slice.iloc[:, 0], window_slice.iloc[:, 1])
+        records.append((result.pvalue, result.half_life, result.is_cointegrated))
+        index.append(aligned.index[end - 1])
+
+    return pd.DataFrame(
+        records, index=index, columns=["pvalue", "half_life", "is_cointegrated"]
+    )

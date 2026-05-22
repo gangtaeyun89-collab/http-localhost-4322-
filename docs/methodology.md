@@ -248,10 +248,10 @@ roadmap:
 
 | Question | Toolkit module | Status |
 |---|---|---|
-| 1. Cointegration | `strategy/pair_finder.py` — `cointegration_test` (Engle-Granger + ADF via `statsmodels`) | Implemented full-sample. **Roadmap:** rolling-window re-testing. |
+| 1. Cointegration | `strategy/pair_finder.py` — `cointegration_test`, `rolling_cointegration` | Engle-Granger + ADF via `statsmodels`, both full-sample and on a rolling window so a pair's *persistence* of cointegration is visible. |
 | 2. OU process | `strategy/ou_process.py` — `fit_ou_process` | Full $(\theta, \mu, \sigma)$, half-life and equilibrium std estimated from the AR(1) form; `OUParams.is_tradable` gates a pair on its half-life. `half_life` delegates here. |
 | 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. `KalmanHedge.fit` tunes the drift rate $\delta$ by maximum likelihood (the prediction-error decomposition of the data likelihood), exposed via `run_backtest.py --fit-kalman`. |
-| 4. Entry/exit | `strategy/signals.py` — `generate_positions` | Fixed z-score thresholds with a stop; `backtest/walk_forward.py` provides honest per-window grid search over the thresholds. **Roadmap:** Bertram analytic thresholds. |
+| 4. Entry/exit | `strategy/signals.py`, `strategy/thresholds.py` | Z-score thresholds with a stop; `optimal_entry_threshold` derives a Bertram-style optimum from the OU process and cost (model-based, so it does not overfit P&L), and `walk_forward` offers a backtest grid search. |
 | 5. Position sizing | `risk/sizing.py`, `risk/portfolio.py` | Per-pair volatility targeting (`vol_target_multiplier`); portfolio allocation via `ledoit_wolf_covariance` + fractional-Kelly `kelly_weights`, driven causally by `backtest/portfolio.py`. |
 | 6. Pair discovery | `strategy/discovery.py` — `discover_pairs` | Correlation-distance clustering, within-cluster cointegration, then Benjamini-Hochberg FDR control. `find_cointegrated_pairs` keeps the brute-force option. |
 
