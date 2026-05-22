@@ -6,6 +6,11 @@ from quant_tool.backtest.metrics import (
     sharpe_ratio,
     trade_stats,
 )
+from quant_tool.backtest.walk_forward import (
+    WalkForwardResult,
+    WindowReport,
+    walk_forward,
+)
 
 __all__ = [
     "BacktestResult",
@@ -15,4 +20,7 @@ __all__ = [
     "performance_summary",
     "sharpe_ratio",
     "trade_stats",
+    "WalkForwardResult",
+    "WindowReport",
+    "walk_forward",
 ]

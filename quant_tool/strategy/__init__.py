@@ -1,3 +1,4 @@
+from quant_tool.strategy.ou_process import OUParams, fit_ou_process
 from quant_tool.strategy.pair_finder import (
     CointegrationResult,
     cointegration_test,
@@ -12,6 +13,8 @@ from quant_tool.strategy.spread import (
 )
 
 __all__ = [
+    "OUParams",
+    "fit_ou_process",
     "CointegrationResult",
     "cointegration_test",
     "find_cointegrated_pairs",

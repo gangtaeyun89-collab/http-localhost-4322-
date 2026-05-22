@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from quant_tool.strategy.ou_process import fit_ou_process
 from quant_tool.strategy.spread import ols_hedge_ratio
 
 
@@ -35,23 +36,10 @@ class CointegrationResult:
 def half_life(spread: pd.Series) -> float:
     """Estimate the mean-reversion half-life of a spread, in bars.
 
-    Fits the AR(1) model ``d_spread_t = lambda * spread_{t-1} + c`` and converts
-    the decay coefficient to a half-life. Returns ``inf`` when the spread shows
-    no mean reversion (``lambda >= 0``).
+    A thin wrapper over :func:`~quant_tool.strategy.ou_process.fit_ou_process`;
+    returns ``inf`` when the spread shows no mean reversion.
     """
-    s = spread.dropna()
-    if len(s) < 3:
-        return float("inf")
-    lagged = s.shift(1).dropna()
-    delta = s.diff().dropna()
-    lagged, delta = lagged.align(delta, join="inner")
-
-    design = np.column_stack([lagged.to_numpy(), np.ones(len(lagged))])
-    coeffs, *_ = np.linalg.lstsq(design, delta.to_numpy(), rcond=None)
-    lam = coeffs[0]
-    if lam >= 0:
-        return float("inf")
-    return float(-np.log(2.0) / np.log(1.0 + lam))
+    return fit_ou_process(spread).half_life
 
 
 def cointegration_test(
