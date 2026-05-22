@@ -18,6 +18,7 @@ cost:
 
 hedge_method: kalman    # "ols" (rolling regression) or "kalman" (adaptive)
 hedge_lookback: 500     # OLS hedge-ratio window; ignored by the Kalman method
+kalman_delta: 1.0e-7    # Kalman hedge-drift rate; tune with run_backtest --fit-kalman
 bars_per_year: 8760
 initial_capital: 10000.0
 target_volatility: 0.15 # annualised risk target; remove to disable sizing

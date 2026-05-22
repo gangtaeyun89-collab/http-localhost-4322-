@@ -19,6 +19,10 @@ Validate on real data you have exported to CSV/Parquet (no network needed)::
 
     python run_backtest.py --base-csv eth.csv --quote-csv btc.csv
 
+Honest out-of-sample evaluation via walk-forward analysis::
+
+    python run_backtest.py --walk-forward --train-size 2000 --test-size 500
+
 This is the runnable MVP for steps 1-2 of the build plan: get data, hedge a
 pair, backtest with realistic fees, and report honest metrics.
 """
@@ -30,7 +34,9 @@ from dataclasses import replace
 
 import pandas as pd
 
+from quant_tool.ai.kalman_filter import KalmanHedge
 from quant_tool.backtest.engine import run_backtest
+from quant_tool.backtest.walk_forward import walk_forward
 from quant_tool.config.settings import BacktestConfig, PairConfig, load_config
 from quant_tool.data.features import align_prices
 from quant_tool.data.ingestion import (
@@ -106,6 +112,23 @@ def main() -> None:
     parser.add_argument(
         "--compare", action="store_true", help="run both OLS and Kalman side by side"
     )
+    parser.add_argument(
+        "--fit-kalman",
+        action="store_true",
+        help="tune the Kalman delta by maximum likelihood "
+        "(prediction-optimal, not necessarily P&L-optimal -- see KalmanHedge.fit)",
+    )
+    parser.add_argument(
+        "--walk-forward",
+        action="store_true",
+        help="run a walk-forward out-of-sample evaluation instead of one backtest",
+    )
+    parser.add_argument(
+        "--train-size", type=int, default=2000, help="walk-forward train window (bars)"
+    )
+    parser.add_argument(
+        "--test-size", type=int, default=500, help="walk-forward test window (bars)"
+    )
     args = parser.parse_args()
 
     if bool(args.base_csv) != bool(args.quote_csv):
@@ -124,6 +147,22 @@ def main() -> None:
     prices = _load_prices(args, config)
     log.info("Loaded %d aligned bars", len(prices))
     _screen(prices)
+
+    if args.fit_kalman and (args.compare or config.hedge_method == "kalman"):
+        fitted = KalmanHedge.fit(prices["base"], prices["quote"])
+        log.info(
+            "Fitted Kalman delta by maximum likelihood: %.2e (default was %.2e)",
+            fitted.delta,
+            config.kalman_delta,
+        )
+        config = replace(config, kalman_delta=fitted.delta)
+
+    if args.walk_forward:
+        wf = walk_forward(prices, config, args.train_size, args.test_size)
+        print("\n" + "=" * 48)
+        print(wf.describe())
+        print("=" * 48)
+        return
 
     methods = ["ols", "kalman"] if args.compare else [config.hedge_method]
     for method in methods:

@@ -248,9 +248,58 @@ roadmap:
 
 | Question | Toolkit module | Status |
 |---|---|---|
-| 1. Cointegration | `strategy/pair_finder.py` — `cointegration_test` (Engle-Granger + ADF via `statsmodels`) | Implemented full-sample. **Roadmap:** rolling-window re-testing. |
-| 2. OU process | `strategy/pair_finder.py` — `half_life` (AR(1) fit) | Half-life implemented. **Roadmap:** full $(\theta, \mu, \sigma)$ estimation. |
-| 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. **Roadmap:** EM tuning of $Q/R$. |
-| 4. Entry/exit | `strategy/signals.py` — `generate_positions` | Fixed z-score thresholds with a stop. **Roadmap:** Bertram thresholds + a backtest grid search. |
-| 5. Position sizing | `risk/sizing.py` — `vol_target_multiplier` | Volatility targeting (the alternative). **Roadmap:** fractional Kelly + Ledoit-Wolf covariance. |
-| 6. Pair discovery | `strategy/pair_finder.py` — `find_cointegrated_pairs` | Brute-force over all column pairs. **Roadmap:** correlation-distance clustering then Benjamini-Hochberg FDR. |
+| 1. Cointegration | `strategy/pair_finder.py` — `cointegration_test`, `rolling_cointegration` | Engle-Granger + ADF via `statsmodels`, both full-sample and on a rolling window so a pair's *persistence* of cointegration is visible. |
+| 2. OU process | `strategy/ou_process.py` — `fit_ou_process` | Full $(\theta, \mu, \sigma)$, half-life and equilibrium std estimated from the AR(1) form; `OUParams.is_tradable` gates a pair on its half-life. `half_life` delegates here. |
+| 3. Kalman hedge | `ai/kalman_filter.py` — `KalmanHedge` | Implemented as a 2-state $[\beta, \alpha]$ filter with a near-frozen intercept, so a non-zero cointegrating intercept is handled without the intercept absorbing the spread. `KalmanHedge.fit` tunes the drift rate $\delta$ by maximum likelihood (the prediction-error decomposition of the data likelihood), exposed via `run_backtest.py --fit-kalman`. |
+| 4. Entry/exit | `strategy/signals.py`, `strategy/thresholds.py` | Z-score thresholds with a stop; `optimal_entry_threshold` derives a Bertram-style optimum from the OU process and cost (model-based, so it does not overfit P&L), and `walk_forward` offers a backtest grid search. |
+| 5. Position sizing | `risk/sizing.py`, `risk/portfolio.py` | Per-pair volatility targeting (`vol_target_multiplier`); portfolio allocation via `ledoit_wolf_covariance` + fractional-Kelly `kelly_weights`, driven causally by `backtest/portfolio.py`. |
+| 6. Pair discovery | `strategy/discovery.py` — `discover_pairs` | Correlation-distance clustering, within-cluster cointegration, then Benjamini-Hochberg FDR control. `find_cointegrated_pairs` keeps the brute-force option. |
+
+---
+
+## Validating the model — walk-forward analysis
+
+The six questions above produce a *strategy*; they do not tell you whether it
+will make money. A single backtest over all history is optimistic — its
+parameters were chosen, explicitly or implicitly, with knowledge of that same
+history.
+
+`backtest/walk_forward.py` runs the honest test. The history is cut into
+consecutive `(train, test)` windows; any parameter search happens on the train
+window, and the chosen parameters are scored only on the *following*, unseen
+test window. The concatenated test windows form an out-of-sample equity curve
+in which no parameter saw its own evaluation data. A persistent gap between
+train and test Sharpe is the signature of overfitting.
+
+Building this surfaced two concrete lessons, both now documented in code:
+
+* Tuning the Kalman drift rate by maximum likelihood (`KalmanHedge.fit`)
+  optimises one-step *prediction*, not P&L, and measurably lowers walk-forward
+  Sharpe.
+* Grid-searching the entry threshold on a single train window's Sharpe is
+  itself a form of overfitting; a fixed, principled threshold generalises
+  better. This is why `walk_forward` performs no tuning by default.
+
+Run it with `python run_backtest.py --walk-forward`.
+
+---
+
+## From one pair to a book — the portfolio pipeline
+
+A single pair is a thin, lumpy edge. The methodology's questions 5 and 6 are
+about trading *many* pairs as a diversified book, which the toolkit now does
+end to end:
+
+1. `data.generate_universe` builds (or you load) a universe of assets.
+2. `strategy.discovery.discover_pairs` runs the question-6 pipeline —
+   correlation-distance clustering, within-cluster cointegration, BH-FDR — and
+   returns the surviving pairs.
+3. `backtest.portfolio.portfolio_backtest` backtests each pair independently,
+   then splits capital across them with fractional-Kelly weights. The weights
+   are re-estimated on a rolling trailing window (Ledoit-Wolf covariance, so
+   `Sigma^-1` stays well-conditioned) and held forward — never fitted on the
+   bars they are scored against.
+
+`python run_portfolio.py` runs the whole chain on a synthetic universe.
+Diversifying across the discovered pairs is what turns a noisy single-pair
+edge into a smoother portfolio equity curve.
