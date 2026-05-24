@@ -43,3 +43,35 @@ def test_midpoint_returns_float():
 def test_midpoint_missing_returns_none():
     client = ClobClient(opener=make_opener({}))
     assert client.midpoint("tok-1") is None
+
+
+def test_default_opener_passes_timeout_by_keyword():
+    """Regression: urlopen's positional second arg is ``data``, not ``timeout``.
+
+    The default opener must use a keyword arg or the call sends the timeout
+    as the request body and fails with a TypeError.
+    """
+    from urllib.request import Request
+
+    from quant_tool.polymarket.data.clob_client import _default_opener
+
+    captured = {}
+
+    def fake_urlopen(req, **kwargs):
+        captured["kwargs"] = kwargs
+        captured["data"] = req.data  # must be None, not the timeout
+
+        class _R:
+            def __enter__(self_): return io.BytesIO(b"{}")
+            def __exit__(self_, *a): return False
+        return _R()
+
+    import quant_tool.polymarket.data.clob_client as mod
+    original = mod.urlopen
+    mod.urlopen = fake_urlopen
+    try:
+        _default_opener(Request("http://example.com"), 7.5)
+    finally:
+        mod.urlopen = original
+    assert captured["data"] is None
+    assert captured["kwargs"] == {"timeout": 7.5}

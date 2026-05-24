@@ -15,13 +15,17 @@ from quant_tool.polymarket.data.models import Market, Token
 Opener = Callable[[Request, float], "object"]
 
 
+def _default_opener(request: Request, timeout: float):
+    return urlopen(request, timeout=timeout)
+
+
 @dataclass(frozen=True)
 class GammaClient:
     """Synchronous read-only client for Polymarket's Gamma metadata API."""
 
     base_url: str = "https://gamma-api.polymarket.com"
     timeout: float = 10.0
-    opener: Opener = urlopen
+    opener: Opener = _default_opener
 
     def _get(self, path: str, params: dict[str, object] | None = None) -> object:
         query = f"?{urlencode(params)}" if params else ""

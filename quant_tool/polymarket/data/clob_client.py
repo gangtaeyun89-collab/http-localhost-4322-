@@ -21,7 +21,13 @@ from quant_tool.polymarket.data.models import Orderbook, OrderbookLevel, Trade
 
 
 Opener = Callable[[Request, float], "object"]
-"""Callable matching :func:`urllib.request.urlopen`. Injectable for tests."""
+"""``(request, timeout) -> response`` callable. Injectable for tests."""
+
+
+def _default_opener(request: Request, timeout: float):
+    # urlopen's second positional arg is ``data``, so the timeout has to be
+    # passed by keyword. Wrapping it here keeps :class:`Opener` clean.
+    return urlopen(request, timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -30,7 +36,7 @@ class ClobClient:
 
     base_url: str = "https://clob.polymarket.com"
     timeout: float = 10.0
-    opener: Opener = urlopen
+    opener: Opener = _default_opener
 
     def _get(self, path: str, params: dict[str, object] | None = None) -> object:
         query = f"?{urlencode(params)}" if params else ""
