@@ -12,17 +12,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
-from dataclasses import asdict, dataclass
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
 
 from quant_tool.polymarket import load_dotenv
 from quant_tool.polymarket.data.clob_client import ClobClient
 from quant_tool.polymarket.data.gamma_client import GammaClient
-from quant_tool.polymarket.data.models import Market, Orderbook
+from quant_tool.polymarket.data.models import Market
+from quant_tool.polymarket.data.snapshots import dump_snapshots
 from quant_tool.polymarket.strategy import STRATEGY_REGISTRY
 from quant_tool.polymarket.strategy.base import MarketSnapshot
 
@@ -78,7 +77,7 @@ def main() -> int:
     print(f"Sampling first {len(sample)} markets and running {len(strategies)} strategies on each.\n")
 
     results: list[MarketResult] = []
-    captured: list[dict] = []
+    captured: list[MarketSnapshot] = []
     for market in sample:
         try:
             yes_book = clob.orderbook(market.yes_token().token_id)
@@ -103,45 +102,15 @@ def main() -> int:
             no_ask=na.price if na else None,
             intents_by_strategy=counts,
         ))
-        if args.save is not None:
-            captured.append(_serialize_snapshot(snap, counts))
+        captured.append(snap)
 
     _print_table(results, names)
     _print_summary(results, names)
 
     if args.save is not None:
-        args.save.parent.mkdir(parents=True, exist_ok=True)
-        args.save.write_text(json.dumps({
-            "captured_at": datetime.utcnow().isoformat() + "Z",
-            "universe_size": len(universe),
-            "snapshots": captured,
-        }, indent=2))
+        dump_snapshots(captured, args.save, universe_size=len(universe))
         print(f"\nSaved {len(captured)} snapshots to {args.save}")
     return 0
-
-
-def _serialize_snapshot(snap: MarketSnapshot, counts: dict[str, int]) -> dict:
-    return {
-        "market": {
-            "condition_id": snap.market.condition_id,
-            "question": snap.market.question,
-            "tick_size": snap.market.tick_size,
-            "min_order_size": snap.market.min_order_size,
-            "tokens": [{"token_id": t.token_id, "outcome": t.outcome} for t in snap.market.tokens],
-        },
-        "yes_book": _serialize_book(snap.yes_book),
-        "no_book": _serialize_book(snap.no_book),
-        "intents_by_strategy": counts,
-    }
-
-
-def _serialize_book(book: Orderbook) -> dict:
-    return {
-        "token_id": book.token_id,
-        "timestamp": book.timestamp.isoformat(),
-        "bids": [{"price": lvl.price, "size": lvl.size} for lvl in book.bids],
-        "asks": [{"price": lvl.price, "size": lvl.size} for lvl in book.asks],
-    }
 
 
 def _print_table(results: list[MarketResult], strategies: list[str]) -> None:
