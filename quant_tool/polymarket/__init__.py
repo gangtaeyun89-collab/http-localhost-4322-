@@ -8,5 +8,6 @@ Top-level entry points live in :mod:`quant_tool.polymarket.runner`.
 """
 
 from quant_tool.polymarket.config import PolymarketConfig, RiskLimits
+from quant_tool.polymarket.env import PolymarketEnv, from_environ, load_dotenv
 
-__all__ = ["PolymarketConfig", "RiskLimits"]
+__all__ = ["PolymarketConfig", "RiskLimits", "PolymarketEnv", "from_environ", "load_dotenv"]
