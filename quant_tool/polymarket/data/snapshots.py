@@ -1,8 +1,9 @@
 """JSON serialization for captured market snapshots.
 
-The smoke script writes snapshots in this format; the replay script reads them
-back. Keeping the load/dump pair in one module means changes to the format are
-caught at import time, not at file-open time.
+The smoke script writes a single batch (one JSON object per file); the recurring
+capture writes a series as JSON-Lines (one batch object per line). The replay
+scripts read either format back. Keeping the load/dump pair in one module means
+changes to the format are caught at import time, not at file-open time.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 from quant_tool.polymarket.data.models import (
     Market,
@@ -26,15 +27,20 @@ SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
-class SnapshotFile:
-    """Container for a serialized snapshot capture."""
+class SnapshotBatch:
+    """One capture cycle: all snapshots fetched at a single point in time."""
 
-    snapshots: tuple[MarketSnapshot, ...]
     captured_at: datetime
     universe_size: int
+    snapshots: tuple[MarketSnapshot, ...]
 
 
-# ---------- dump --------------------------------------------------------
+# Back-compat alias: the single-file format was previously exposed as
+# ``SnapshotFile`` and a few tests still import it under that name.
+SnapshotFile = SnapshotBatch
+
+
+# ---------- single-batch JSON (used by the smoke script's --save) -------
 
 
 def dump_snapshots(
@@ -44,16 +50,26 @@ def dump_snapshots(
     universe_size: int | None = None,
     captured_at: datetime | None = None,
 ) -> None:
-    snapshots = tuple(snapshots)
-    payload = {
+    """Write one batch as a pretty-printed JSON object (``snapshot.json`` style)."""
+    payload = serialize_batch(tuple(snapshots), captured_at=captured_at,
+                              universe_size=universe_size)
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2))
+
+
+def serialize_batch(
+    snapshots: tuple[MarketSnapshot, ...],
+    *,
+    captured_at: datetime | None = None,
+    universe_size: int | None = None,
+) -> dict:
+    return {
         "schema_version": SCHEMA_VERSION,
         "captured_at": (captured_at or datetime.now(timezone.utc)).isoformat(),
         "universe_size": universe_size if universe_size is not None else len(snapshots),
         "snapshots": [serialize_snapshot(s) for s in snapshots],
     }
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, indent=2))
 
 
 def serialize_snapshot(snap: MarketSnapshot) -> dict:
@@ -145,3 +161,54 @@ def _parse_iso(raw: object) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+# ---------- JSON-Lines stream (used by the recurring capture) -----------
+
+
+def append_batch(
+    path: str | Path,
+    snapshots: Iterable[MarketSnapshot],
+    *,
+    captured_at: datetime | None = None,
+    universe_size: int | None = None,
+) -> None:
+    """Append one capture cycle as a single JSONL line.
+
+    Crash-safe-enough for our purposes: each line is a complete JSON object, so
+    a partial line at the end of the file just gets dropped by :func:`iter_batches`.
+    """
+    payload = serialize_batch(tuple(snapshots), captured_at=captured_at,
+                              universe_size=universe_size)
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a") as fh:
+        fh.write(json.dumps(payload) + "\n")
+
+
+def iter_batches(path: str | Path) -> Iterator[SnapshotBatch]:
+    """Yield each batch from a JSONL capture in file order.
+
+    Partial / unparseable lines are silently skipped so a crashed capture
+    doesn't poison the rest of the series.
+    """
+    with Path(path).open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            version = payload.get("schema_version", 1)
+            if version != SCHEMA_VERSION:
+                raise ValueError(
+                    f"unsupported snapshot schema version {version} (expected {SCHEMA_VERSION})"
+                )
+            snapshots = tuple(deserialize_snapshot(raw) for raw in payload.get("snapshots", []))
+            yield SnapshotBatch(
+                captured_at=_parse_iso(payload.get("captured_at")) or datetime.now(timezone.utc),
+                universe_size=int(payload.get("universe_size", len(snapshots))),
+                snapshots=snapshots,
+            )

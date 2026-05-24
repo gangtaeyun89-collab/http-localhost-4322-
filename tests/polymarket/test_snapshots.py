@@ -10,8 +10,10 @@ from quant_tool.polymarket.data.models import (
 )
 from quant_tool.polymarket.data.snapshots import (
     SCHEMA_VERSION,
+    append_batch,
     deserialize_snapshot,
     dump_snapshots,
+    iter_batches,
     load_snapshots,
     serialize_snapshot,
 )
@@ -75,6 +77,32 @@ def test_dump_and_load_writes_versioned_file(tmp_path):
     target.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="schema version"):
         load_snapshots(target)
+
+
+def test_jsonl_round_trip(tmp_path):
+    path = tmp_path / "series.jsonl"
+    t1 = datetime(2026, 5, 24, 12, 0, tzinfo=timezone.utc)
+    t2 = datetime(2026, 5, 24, 12, 2, tzinfo=timezone.utc)
+    append_batch(path, [_snapshot()], captured_at=t1, universe_size=10)
+    append_batch(path, [_snapshot(), _snapshot()], captured_at=t2, universe_size=11)
+    batches = list(iter_batches(path))
+    assert len(batches) == 2
+    assert batches[0].captured_at == t1
+    assert batches[0].universe_size == 10
+    assert len(batches[0].snapshots) == 1
+    assert batches[1].captured_at == t2
+    assert len(batches[1].snapshots) == 2
+
+
+def test_jsonl_skips_partial_trailing_line(tmp_path):
+    """A crashed capture can leave a half-written final line; loader skips it."""
+    path = tmp_path / "series.jsonl"
+    append_batch(path, [_snapshot()])
+    # Simulate a crash mid-write by appending a truncated JSON line.
+    with path.open("a") as fh:
+        fh.write('{"schema_version": 1, "captured_at": "2026-')
+    batches = list(iter_batches(path))
+    assert len(batches) == 1  # the good line survives, the partial is ignored
 
 
 def test_load_handles_market_with_no_end_date(tmp_path):
