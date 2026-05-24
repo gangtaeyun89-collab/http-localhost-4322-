@@ -19,3 +19,5 @@ market_data/
 # Polymarket captured snapshots -- shared via dedicated branches, not main history
 snapshot*.json
 snapshots/
+capture*.jsonl
+*.jsonl
