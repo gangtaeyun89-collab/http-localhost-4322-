@@ -19,6 +19,7 @@ from quant_tool.polymarket.data.models import (
     Orderbook,
     OrderbookLevel,
     Token,
+    Trade,
 )
 from quant_tool.polymarket.strategy.base import MarketSnapshot
 
@@ -73,10 +74,23 @@ def serialize_batch(
 
 
 def serialize_snapshot(snap: MarketSnapshot) -> dict:
-    return {
+    payload = {
         "market": _serialize_market(snap.market),
         "yes_book": _serialize_book(snap.yes_book),
         "no_book": _serialize_book(snap.no_book),
+    }
+    if snap.trades:
+        payload["trades"] = [_serialize_trade(t) for t in snap.trades]
+    return payload
+
+
+def _serialize_trade(trade: Trade) -> dict:
+    return {
+        "token_id": trade.token_id,
+        "price": trade.price,
+        "size": trade.size,
+        "side": trade.side,
+        "timestamp": trade.timestamp.isoformat(),
     }
 
 
@@ -124,7 +138,18 @@ def deserialize_snapshot(raw: dict) -> MarketSnapshot:
     market = _deserialize_market(raw["market"])
     yes_book = _deserialize_book(raw["yes_book"])
     no_book = _deserialize_book(raw["no_book"])
-    return MarketSnapshot(market=market, yes_book=yes_book, no_book=no_book)
+    trades = tuple(_deserialize_trade(t) for t in raw.get("trades", []))
+    return MarketSnapshot(market=market, yes_book=yes_book, no_book=no_book, trades=trades)
+
+
+def _deserialize_trade(raw: dict) -> Trade:
+    return Trade(
+        token_id=raw["token_id"],
+        price=float(raw["price"]),
+        size=float(raw["size"]),
+        side=str(raw.get("side", "BUY")).upper(),
+        timestamp=_parse_iso(raw.get("timestamp")) or datetime.now(timezone.utc),
+    )
 
 
 def _deserialize_market(raw: dict) -> Market:

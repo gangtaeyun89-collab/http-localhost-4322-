@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
-from quant_tool.polymarket.data.models import Market, Orderbook
+from quant_tool.polymarket.data.models import Market, Orderbook, Trade
 
 
 class Side(str, Enum):
@@ -48,11 +48,17 @@ class Intent:
 
 @dataclass(frozen=True)
 class MarketSnapshot:
-    """One refresh cycle's view of a market handed to a strategy."""
+    """One refresh cycle's view of a market handed to a strategy.
+
+    ``trades`` are the prints observed on either token since the previous cycle,
+    in chronological order. Empty by default for back-compat with snapshot files
+    captured before trade-tape recording was added.
+    """
 
     market: Market
     yes_book: Orderbook
     no_book: Orderbook
+    trades: tuple[Trade, ...] = ()
 
 
 class Strategy(Protocol):

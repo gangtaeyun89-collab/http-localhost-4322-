@@ -53,6 +53,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--refresh-universe-every", type=int, default=10,
                    help="Re-fetch the active-market list every N cycles "
                         "(default: 10; intermediate cycles reuse it)")
+    p.add_argument("--trade-limit", type=int, default=50,
+                   help="Recent trades to fetch per token per cycle (default: 50)")
+    p.add_argument("--no-trades", action="store_true",
+                   help="Skip trade-tape fetching (faster, books only)")
     p.add_argument("--verbose", "-v", action="store_true")
     return p.parse_args()
 
@@ -120,7 +124,16 @@ def main() -> int:
                 book_failures += 1
                 log.debug("book fetch failed for %s: %s", market.condition_id, exc)
                 continue
-            captured.append(MarketSnapshot(market=market, yes_book=yes_book, no_book=no_book))
+            trades = ()
+            if not args.no_trades:
+                try:
+                    yes_trades = clob.trades(market.yes_token().token_id, limit=args.trade_limit)
+                    no_trades = clob.trades(market.no_token().token_id, limit=args.trade_limit)
+                    trades = tuple(sorted(yes_trades + no_trades, key=lambda t: t.timestamp))
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("trade fetch failed for %s: %s", market.condition_id, exc)
+            captured.append(MarketSnapshot(market=market, yes_book=yes_book,
+                                           no_book=no_book, trades=trades))
 
         if not captured:
             log.warning("[cycle %d] no books retrieved; skipping write", cycles)

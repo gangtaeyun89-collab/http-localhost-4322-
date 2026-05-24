@@ -79,6 +79,34 @@ def test_dump_and_load_writes_versioned_file(tmp_path):
         load_snapshots(target)
 
 
+def test_snapshot_with_trades_round_trip():
+    from quant_tool.polymarket.data.models import Trade
+    snap_with_trades = MarketSnapshot(
+        market=_market(),
+        yes_book=_snapshot().yes_book,
+        no_book=_snapshot().no_book,
+        trades=(
+            Trade(token_id="yes", price=0.50, size=10, side="BUY",
+                  timestamp=datetime(2026, 5, 24, 12, tzinfo=timezone.utc)),
+            Trade(token_id="no", price=0.49, size=5, side="SELL",
+                  timestamp=datetime(2026, 5, 24, 12, 1, tzinfo=timezone.utc)),
+        ),
+    )
+    restored = deserialize_snapshot(serialize_snapshot(snap_with_trades))
+    assert len(restored.trades) == 2
+    assert restored.trades[0].price == 0.50
+    assert restored.trades[1].side == "SELL"
+
+
+def test_snapshot_without_trades_omits_field():
+    """Back-compat: old files have no `trades` key; new files only include it when non-empty."""
+    snap = _snapshot()
+    payload = serialize_snapshot(snap)
+    assert "trades" not in payload
+    restored = deserialize_snapshot(payload)
+    assert restored.trades == ()
+
+
 def test_jsonl_round_trip(tmp_path):
     path = tmp_path / "series.jsonl"
     t1 = datetime(2026, 5, 24, 12, 0, tzinfo=timezone.utc)

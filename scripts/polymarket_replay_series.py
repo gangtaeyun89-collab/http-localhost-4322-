@@ -81,17 +81,32 @@ def main() -> int:
     batches_seen = 0
     cycle_open_intents = 0
 
+    prints_seen = 0
     for batch in iter_batches(args.capture):
         batches_seen += 1
-        # 1. Match resting maker orders against the new books in this batch.
+        # 1a. Match resting maker orders against trade prints (more accurate).
+        #     Falls back to book-change matching when no trade tape is present.
         for snap in batch.snapshots:
+            for trade in snap.trades:
+                prints_seen += 1
+                for fill in _match_trade_to_resting(broker, trade, batch.captured_at):
+                    name = fill.strategy
+                    stats[name].rested_fills += 1
+                    stats[name].notional_filled += fill.price * fill.size
+                    if args.verbose:
+                        print(f"  [print fill] {name:<14} {fill.side.value:<4} "
+                              f"@ {fill.price:.3f} x {fill.size:.1f}")
+        # 1b. Book-change fallback for files without trade tape.
+        for snap in batch.snapshots:
+            if snap.trades:
+                continue  # already handled via print matching
             for book in (snap.yes_book, snap.no_book):
                 for fill in broker.on_book(book, now=batch.captured_at):
                     name = fill.strategy
                     stats[name].rested_fills += 1
                     stats[name].notional_filled += fill.price * fill.size
                     if args.verbose:
-                        print(f"  [rest fill ] {name:<14} {fill.side.value:<4} "
+                        print(f"  [book fill ] {name:<14} {fill.side.value:<4} "
                               f"@ {fill.price:.3f} x {fill.size:.1f}")
 
         # 2. Run each strategy on each snapshot in this batch.
@@ -135,8 +150,47 @@ def main() -> int:
         if owner and owner in stats:
             stats[owner].realised_pnl += pos.realised_pnl
 
-    _print_report(batches_seen, broker, stats, equity_rows, cycle_open_intents, args)
+    _print_report(batches_seen, broker, stats, equity_rows, cycle_open_intents, args, prints_seen)
     return 0
+
+
+def _match_trade_to_resting(broker: PaperBroker, trade, now):
+    """Credit resting maker orders when a print crosses them.
+
+    A resting BUY at price p fills if any trade on the same token printed at
+    price <= p (someone sold into our bid). Symmetric for SELL. We consume the
+    intent's full size on the first match -- the trade tape doesn't tell us
+    *whose* order filled, just that liquidity at that price was taken, so
+    crediting a single resting order per print is a reasonable approximation.
+    """
+    from quant_tool.polymarket.execution.paper_broker import _RestingOrder  # local: private type
+
+    fills = []
+    to_remove = []
+    for order_id, resting in broker.open_orders.items():
+        intent = resting.intent
+        if intent.token_id != trade.token_id:
+            continue
+        if intent.side is Side.BUY and trade.price <= intent.price:
+            crosses = True
+        elif intent.side is Side.SELL and trade.price >= intent.price:
+            crosses = True
+        else:
+            crosses = False
+        if not crosses:
+            continue
+        size = min(intent.size, trade.size)
+        if size <= 0:
+            continue
+        # Build a synthetic fill record via the broker's bookkeeping helpers.
+        fill = broker._record_fill(intent.strategy, intent.token_id, intent.side,
+                                   intent.price, size, now)
+        fills.append(fill)
+        to_remove.append(order_id)
+        break  # one resting order credited per print
+    for order_id in to_remove:
+        broker.open_orders.pop(order_id, None)
+    return fills
 
 
 def _update_mids(snap: MarketSnapshot, mids: dict[str, float]) -> None:
@@ -146,8 +200,10 @@ def _update_mids(snap: MarketSnapshot, mids: dict[str, float]) -> None:
             mids[book.token_id] = m
 
 
-def _print_report(batches: int, broker: PaperBroker, stats, equity_rows, open_intents, args) -> None:
+def _print_report(batches: int, broker: PaperBroker, stats, equity_rows, open_intents, args, prints_seen: int = 0) -> None:
     print(f"\nReplayed {batches} batches; final cycle had {open_intents} open maker orders.")
+    print(f"Trade prints in tape: {prints_seen}"
+          + ("  (using trade-tape fill detection)" if prints_seen else "  (no trade tape -- using book-change fallback)"))
     if equity_rows:
         first_eq, last_eq = equity_rows[0][1], equity_rows[-1][1]
         peak_eq = max(r[1] for r in equity_rows)
