@@ -97,6 +97,48 @@ def test_tick_persists_fill_via_trade_print(tmp_path):
     assert any(p.token_id == "y_c1" and p.shares > 0 for p in positions)
 
 
+def test_tick_writes_capture_when_configured(tmp_path):
+    """Live bot should append each cycle to the capture JSONL for the Backtest page."""
+    from quant_tool.polymarket.data.snapshots import iter_batches
+    markets = [_market("c1")]
+    books = {"y_c1": _book("y_c1", 0.40, 0.50), "n_c1": _book("n_c1", 0.50, 0.60)}
+    capture = tmp_path / "live_capture.jsonl"
+    config = LiveRunnerConfig(
+        db_path=str(tmp_path / "live.sqlite"),
+        bankroll=1_000, interval_seconds=0.001, markets_per_cycle=1,
+        strategy_names=("market_maker",), max_per_market=0.5, max_total=1.0,
+        capture_path=str(capture),
+    )
+    runner = LiveRunner(config, clob=_FakeClob(books), gamma=_FakeGamma(markets))
+    runner.start()
+    runner.tick(0)
+    runner.tick(1)
+    assert capture.exists()
+    batches = list(iter_batches(capture))
+    assert len(batches) == 2
+    assert len(batches[0].snapshots) == 1
+
+
+def test_tick_capture_every_n_cycles(tmp_path):
+    from quant_tool.polymarket.data.snapshots import iter_batches
+    markets = [_market("c1")]
+    books = {"y_c1": _book("y_c1", 0.40, 0.50), "n_c1": _book("n_c1", 0.50, 0.60)}
+    capture = tmp_path / "live_capture.jsonl"
+    config = LiveRunnerConfig(
+        db_path=str(tmp_path / "live.sqlite"),
+        bankroll=1_000, interval_seconds=0.001, markets_per_cycle=1,
+        strategy_names=("market_maker",), max_per_market=0.5, max_total=1.0,
+        capture_path=str(capture), capture_every_n_cycles=3,
+    )
+    runner = LiveRunner(config, clob=_FakeClob(books), gamma=_FakeGamma(markets))
+    runner.start()
+    for i in range(5):
+        runner.tick(i)
+    batches = list(iter_batches(capture))
+    # Cycles 0 and 3 hit the every-N filter; 1, 2, 4 should not.
+    assert len(batches) == 2
+
+
 def test_tick_records_cycle_metric(tmp_path):
     """Every tick should persist a cycle_metric row -- powers the dashboard chart."""
     markets = [_market("c1")]

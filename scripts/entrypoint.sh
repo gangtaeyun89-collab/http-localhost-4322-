@@ -19,6 +19,8 @@ python scripts/polymarket_live.py \
     --bankroll "${BOT_BANKROLL:-10000}" \
     --max-per-market "${BOT_MAX_PER_MARKET:-0.02}" \
     --max-total "${BOT_MAX_TOTAL:-0.50}" \
+    --capture "${POLYMARKET_CAPTURE_PATH:-/data/capture.jsonl}" \
+    --capture-every-n-cycles "${BOT_CAPTURE_EVERY_N:-1}" \
     > /data/bot.log 2>&1 &
 BOT_PID=$!
 echo "Bot started, PID=${BOT_PID}, logging to /data/bot.log"

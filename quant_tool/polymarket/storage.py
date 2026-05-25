@@ -340,6 +340,16 @@ def default_bot_log_path() -> Path:
     return Path("data") / "bot.log"
 
 
+def default_capture_path() -> Path:
+    """Where the live bot streams its JSONL capture for the Backtest page."""
+    override = os.environ.get("POLYMARKET_CAPTURE_PATH")
+    if override:
+        return Path(override)
+    if Path("/data").is_dir():
+        return Path("/data/capture.jsonl")
+    return Path("data") / "capture.jsonl"
+
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -18,7 +18,7 @@ import sys
 
 from quant_tool.polymarket import load_dotenv
 from quant_tool.polymarket.live_runner import LiveRunner, LiveRunnerConfig
-from quant_tool.polymarket.storage import default_db_path
+from quant_tool.polymarket.storage import default_capture_path, default_db_path
 from quant_tool.polymarket.strategy import STRATEGY_REGISTRY
 
 
@@ -34,6 +34,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-per-market", type=float, default=0.02)
     p.add_argument("--max-total", type=float, default=0.50)
     p.add_argument("--trade-limit", type=int, default=50)
+    p.add_argument("--capture", default=str(default_capture_path()),
+                   help="Append each cycle's snapshots to this JSONL so the "
+                        "Backtest page can replay them. Pass empty string to disable.")
+    p.add_argument("--capture-every-n-cycles", type=int, default=1)
     p.add_argument("--verbose", "-v", action="store_true")
     return p.parse_args()
 
@@ -55,6 +59,8 @@ def main() -> int:
         interval_seconds=args.interval, markets_per_cycle=args.markets,
         strategy_names=names, max_per_market=args.max_per_market,
         max_total=args.max_total, trade_limit=args.trade_limit,
+        capture_path=(args.capture or None),
+        capture_every_n_cycles=args.capture_every_n_cycles,
     )
     runner = LiveRunner(config)
     runner.run_forever()

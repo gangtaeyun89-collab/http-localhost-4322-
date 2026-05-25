@@ -43,6 +43,7 @@ from quant_tool.polymarket.dashboard.state import (
     init_defaults,
     run_and_cache_backtest,
 )
+from quant_tool.polymarket.storage import default_capture_path
 
 
 st.set_page_config(page_title="Polymarket Bot", page_icon=None, layout="wide")
@@ -53,11 +54,19 @@ st.title("Polymarket bake-off")
 st.caption("Local ops console -- read-only view of captured snapshots + paper-trade replays.")
 
 # ---------- Sidebar: capture file + risk knobs ----------
+# If the live bot has been writing a capture file, use that as the default so
+# the Backtest button "just works" without anyone having to upload anything.
+_live_capture = default_capture_path()
+_default_path = str(st.session_state.get(CAPTURE_PATH_KEY)
+                     or (_live_capture if _live_capture.exists() else ""))
 with st.sidebar:
     st.header("Capture file")
+    if _live_capture.exists() and not st.session_state.get(CAPTURE_PATH_KEY):
+        st.success(f"Live bot capture detected: `{_live_capture}`")
     text_path = st.text_input("Path to JSONL capture",
-                              value=str(st.session_state.get(CAPTURE_PATH_KEY, "")),
-                              help="Path to a file produced by scripts/polymarket_capture.py")
+                              value=_default_path,
+                              help="Pre-filled with the live bot's capture if "
+                                   "one exists. Override with a path, or upload below.")
     uploaded = st.file_uploader("...or upload one", type=["jsonl"])
     if uploaded is not None:
         target = Path(".dashboard_uploads")

@@ -27,6 +27,7 @@ from quant_tool.polymarket.config import RiskLimits
 from quant_tool.polymarket.data.clob_client import ClobClient
 from quant_tool.polymarket.data.gamma_client import GammaClient
 from quant_tool.polymarket.data.models import Market
+from quant_tool.polymarket.data.snapshots import append_batch
 from quant_tool.polymarket.execution.paper_broker import Fill, PaperBroker
 from quant_tool.polymarket.risk.gate import RiskDecision, RiskGate
 from quant_tool.polymarket.storage import Storage
@@ -51,6 +52,11 @@ class LiveRunnerConfig:
     max_per_market: float = 0.02
     max_total: float = 0.50
     trade_limit: int = 50
+    capture_path: str | None = None
+    """If set, append each cycle's snapshots to this JSONL file so the Backtest
+    page can replay them. Default off; the Fly.io entrypoint enables it."""
+    capture_every_n_cycles: int = 1
+    """Write to capture only every N cycles (set higher to slow disk growth)."""
 
     def __post_init__(self) -> None:
         if self.mode != "paper":
@@ -163,6 +169,16 @@ class LiveRunner:
             return
         sample = self._universe[: self.config.markets_per_cycle]
         snapshots = self._fetch_snapshots(sample)
+        # Append to the capture file so the Backtest page has data to replay.
+        if (self.config.capture_path
+                and cycle % self.config.capture_every_n_cycles == 0
+                and snapshots):
+            try:
+                append_batch(self.config.capture_path, snapshots,
+                              captured_at=now,
+                              universe_size=len(self._universe))
+            except Exception:  # noqa: BLE001
+                log.exception("capture write failed; continuing")
         for snap in snapshots:
             self._match_resting_against_trades(snap, now)
         for snap in snapshots:
