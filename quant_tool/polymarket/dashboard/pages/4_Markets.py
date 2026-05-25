@@ -1,10 +1,10 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
 """Markets viewer -- inspect the orderbook of any market in the capture."""
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 import pandas as pd
 import plotly.graph_objects as go

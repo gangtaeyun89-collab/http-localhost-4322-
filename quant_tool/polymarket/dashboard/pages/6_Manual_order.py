@@ -1,7 +1,3 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
 """Paper-trade manual order entry.
 
 Lets you submit a single intent against any market+book from the loaded capture
@@ -10,6 +6,10 @@ without writing a strategy.
 """
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 import streamlit as st
 
