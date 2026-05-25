@@ -38,19 +38,30 @@ if not cap or not Path(cap).exists():
     st.stop()
 
 # Show capture stats up front so the user knows what they're sweeping over.
+# Counting batches requires parsing the whole file, which is slow for large
+# captures -- skip it when the file is over a few MB to keep this page snappy.
 cap_path = Path(cap)
 size_mb = cap_path.stat().st_size / (1024 * 1024)
-try:
-    from quant_tool.polymarket.data.snapshots import iter_batches as _iter
-    n_batches = sum(1 for _ in _iter(cap_path))
-except Exception:  # noqa: BLE001
-    n_batches = -1
+n_batches: int | None = None
+if size_mb < 5.0:
+    try:
+        from quant_tool.polymarket.data.snapshots import iter_batches as _iter
+        n_batches = sum(1 for _ in _iter(cap_path))
+    except Exception:  # noqa: BLE001
+        n_batches = None
+else:
+    # Quick line count is a good proxy for batch count and reads the file once.
+    try:
+        with cap_path.open("rb") as fh:
+            n_batches = sum(1 for _ in fh)
+    except Exception:  # noqa: BLE001
+        n_batches = None
 i1, i2, i3 = st.columns(3)
 i1.metric("Capture file", cap_path.name)
 i2.metric("Size", f"{size_mb:.1f} MB")
-i3.metric("Batches", n_batches if n_batches >= 0 else "—")
+i3.metric("Batches", n_batches if n_batches is not None else "—")
 
-if n_batches > 200:
+if n_batches is not None and n_batches > 200:
     st.warning(
         f"Capture has {n_batches} batches — replaying it 225 times will be "
         "slow on a small machine. Consider lowering grid resolution below "
