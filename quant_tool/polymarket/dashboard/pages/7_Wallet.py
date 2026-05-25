@@ -30,7 +30,9 @@ st.caption("USDC.e balance + open Polymarket positions from the proxy wallet, "
             "read fresh every time you click **Refresh**.")
 
 env = from_environ()
-default_address = env.proxy_address or env.wallet_address or ""
+# Hardcoded fallback so the address is always pre-filled even before secrets load.
+DEFAULT_PROXY_ADDRESS = "0xa8Fd04Ad1A2FF5a57D850A5bE6Fce5D28848C52f"
+default_address = env.proxy_address or env.wallet_address or DEFAULT_PROXY_ADDRESS
 
 # ---- address picker ----
 address = st.text_input("Polymarket wallet address (proxy preferred)",
