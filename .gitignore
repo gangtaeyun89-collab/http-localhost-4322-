@@ -21,3 +21,10 @@ snapshot*.json
 snapshots/
 capture*.jsonl
 *.jsonl
+
+# Polymarket live-bot SQLite state -- per-laptop, never committed
+data/polymarket.sqlite*
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.dashboard_uploads/
