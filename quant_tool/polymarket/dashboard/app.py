@@ -3,16 +3,37 @@
 Run from the repo root with:
 
     streamlit run quant_tool/polymarket/dashboard/app.py
+
+Streamlit Cloud sets the working directory to the repo root but does *not*
+add it to sys.path. We do that ourselves so ``from quant_tool...`` resolves
+the same way it does locally.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from datetime import datetime, timezone
+
+import os
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
+# When deployed on Streamlit Community Cloud, configuration values are stored
+# in ``st.secrets`` rather than a ``.env`` file. Copy them into ``os.environ``
+# so the same ``from_environ`` loader works in both environments.
+try:
+    for _k, _v in dict(st.secrets).items():  # type: ignore[union-attr]
+        os.environ.setdefault(_k, str(_v))
+except Exception:
+    pass
 
 from quant_tool.polymarket import load_dotenv
 from quant_tool.polymarket.dashboard.state import (

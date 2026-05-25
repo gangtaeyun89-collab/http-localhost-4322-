@@ -28,3 +28,6 @@ data/polymarket.sqlite*
 *.sqlite-shm
 *.sqlite-wal
 .dashboard_uploads/
+
+# Streamlit Cloud secrets -- only the .example file is committed
+.streamlit/secrets.toml

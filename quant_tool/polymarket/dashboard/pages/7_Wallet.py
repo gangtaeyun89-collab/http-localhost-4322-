@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
 """Live wallet view -- on-chain USDC balance + open Polymarket positions.
 
 Reads from Polygon RPC + Polymarket's data-api. No private key is needed; all

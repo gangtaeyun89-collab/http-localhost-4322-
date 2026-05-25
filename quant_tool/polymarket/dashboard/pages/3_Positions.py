@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
 """Open positions and per-token realised PnL from the last backtest."""
 
 from __future__ import annotations

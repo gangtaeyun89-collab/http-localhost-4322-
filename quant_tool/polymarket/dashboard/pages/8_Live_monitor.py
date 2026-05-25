@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
 """Live monitor -- watches the SQLite DB written by the live runner.
 
 Reads run metadata, recent fills, equity curve, and current positions for the

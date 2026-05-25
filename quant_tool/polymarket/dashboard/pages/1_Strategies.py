@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
 """Per-strategy controls: enable/disable and edit parameters.
 
 Changes are applied to ``st.session_state`` immediately. Re-run the backtest
