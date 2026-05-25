@@ -211,13 +211,20 @@ def append_batch(
         fh.write(json.dumps(payload) + "\n")
 
 
-def iter_batches(path: str | Path) -> Iterator[SnapshotBatch]:
+def iter_batches(path: str | Path, *, skip: int = 0) -> Iterator[SnapshotBatch]:
     """Yield each batch from a JSONL capture in file order.
+
+    ``skip`` -- fast-forward past the first N lines without parsing them. Use
+    this when you only care about the most recent batches; parsing the skipped
+    JSON would otherwise be the dominant cost on a long capture.
 
     Partial / unparseable lines are silently skipped so a crashed capture
     doesn't poison the rest of the series.
     """
     with Path(path).open() as fh:
+        for _ in range(int(skip)):
+            if not fh.readline():
+                return
         for line in fh:
             line = line.strip()
             if not line:

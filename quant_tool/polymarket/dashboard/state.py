@@ -74,8 +74,13 @@ def run_and_cache_backtest(
     """
     if cfg.capture_path is None or not Path(cfg.capture_path).exists():
         return None
-    # Wipe any previous result so a stale chart isn't shown if this run fails.
+    # Wipe any previous result so a stale chart isn't shown if this run fails,
+    # and force a GC sweep so the previous result's fills/positions are freed
+    # before we allocate the new run. Otherwise the second click is slow due
+    # to memory pressure on the 512MB Fly machine.
     st.session_state.pop(BACKTEST_KEY, None)
+    import gc
+    gc.collect()
     result = run_backtest(
         cfg.capture_path,
         strategy_names=cfg.enabled,

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -120,6 +120,28 @@ def test_jsonl_round_trip(tmp_path):
     assert len(batches[0].snapshots) == 1
     assert batches[1].captured_at == t2
     assert len(batches[1].snapshots) == 2
+
+
+def test_iter_batches_skip_fast_forwards_without_parsing(tmp_path):
+    """skip=N must drop the first N lines and yield only the rest."""
+    path = tmp_path / "series.jsonl"
+    t0 = datetime(2026, 5, 24, 12, tzinfo=timezone.utc)
+    for i in range(5):
+        append_batch(path, [_snapshot()],
+                      captured_at=t0 + timedelta(minutes=i), universe_size=10)
+    full = list(iter_batches(path))
+    skipped = list(iter_batches(path, skip=3))
+    assert len(full) == 5
+    assert len(skipped) == 2
+    # Skipped result should match the last 2 batches of the full result.
+    assert skipped[0].captured_at == full[3].captured_at
+    assert skipped[1].captured_at == full[4].captured_at
+
+
+def test_iter_batches_skip_beyond_file_yields_nothing(tmp_path):
+    path = tmp_path / "series.jsonl"
+    append_batch(path, [_snapshot()])
+    assert list(iter_batches(path, skip=99)) == []
 
 
 def test_jsonl_skips_partial_trailing_line(tmp_path):

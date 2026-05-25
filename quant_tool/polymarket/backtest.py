@@ -111,9 +111,7 @@ def run_backtest(
     snapshots_seen = 0
     prints_seen = 0
 
-    for batch_idx, batch in enumerate(iter_batches(capture_path)):
-        if batch_idx < skip_until:
-            continue
+    for batch_idx, batch in enumerate(iter_batches(capture_path, skip=skip_until)):
         batches_seen += 1
         snapshots_seen += len(batch.snapshots)
         if progress_callback is not None:
