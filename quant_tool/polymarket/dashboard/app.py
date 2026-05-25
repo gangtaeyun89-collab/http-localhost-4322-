@@ -94,7 +94,7 @@ with st.sidebar:
 result = st.session_state.get(BACKTEST_KEY)
 
 if result is None:
-    st.info("Enter a capture file path in the sidebar and click **Run backtest** to begin.")
+    st.info("Upload a capture file in the sidebar and click **Run backtest** to begin.")
     st.markdown("""
     ### Quick start
     1. On your laptop, run:
@@ -102,10 +102,17 @@ if result is None:
        PYTHONPATH=. python scripts/polymarket_capture.py \\
            --output capture.jsonl --interval 60 --duration 3600 --markets 30
        ```
-    2. Copy `capture.jsonl` to this machine and enter its path in the sidebar.
+       Leave it running. It'll write to `capture.jsonl` in the current folder.
+    2. **On this page**, click the **Upload** button in the sidebar and pick
+       that `capture.jsonl` from your laptop. (The text path field only works
+       if the file is on this server, which it isn't.)
     3. Click **Run backtest**.
 
     Then explore the **Strategies**, **Fills**, **Markets**, and **Backtest sweep** pages.
+
+    ### Just want to see your wallet?
+    Click **Wallet** in the sidebar -- no capture needed, it reads your
+    USDC balance + positions directly from Polygon.
     """)
     st.stop()
 
