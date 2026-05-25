@@ -37,6 +37,26 @@ if not cap or not Path(cap).exists():
              "(or click **Generate capture now** in the sidebar).")
     st.stop()
 
+# Show capture stats up front so the user knows what they're sweeping over.
+cap_path = Path(cap)
+size_mb = cap_path.stat().st_size / (1024 * 1024)
+try:
+    from quant_tool.polymarket.data.snapshots import iter_batches as _iter
+    n_batches = sum(1 for _ in _iter(cap_path))
+except Exception:  # noqa: BLE001
+    n_batches = -1
+i1, i2, i3 = st.columns(3)
+i1.metric("Capture file", cap_path.name)
+i2.metric("Size", f"{size_mb:.1f} MB")
+i3.metric("Batches", n_batches if n_batches >= 0 else "—")
+
+if n_batches > 200:
+    st.warning(
+        f"Capture has {n_batches} batches — replaying it 225 times will be "
+        "slow on a small machine. Consider lowering grid resolution below "
+        "to 10×10 first, or cap the replay length."
+    )
+
 st.markdown("### Grid")
 c1, c2 = st.columns(2)
 with c1:
