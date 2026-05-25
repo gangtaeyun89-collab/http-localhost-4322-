@@ -1,7 +1,7 @@
 # Fly.io configuration for the Polymarket bot + dashboard combo.
 # Replace `app = ...` with a name you choose during `fly launch`.
 
-app = "polymarket-bot"
+app = "tk3719polybot"
 primary_region = "iad"  # US East (Ashburn) -- low latency to Polygon RPC
 
 # Single tiny shared-CPU machine. ~$2/month, well under the $5 monthly free
