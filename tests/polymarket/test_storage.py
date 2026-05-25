@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -116,3 +117,32 @@ def test_wal_journal_mode_active(tmp_path):
     s = _make_storage(tmp_path)
     cur = s._conn.execute("PRAGMA journal_mode")
     assert cur.fetchone()[0] == "wal"
+
+
+def test_cycle_metrics_record_and_query(tmp_path):
+    s = _make_storage(tmp_path)
+    rid = s.start_run(mode="paper", bankroll=1000)
+    t0 = datetime(2026, 5, 24, 12, tzinfo=timezone.utc)
+    for i in range(3):
+        s.record_cycle_metric(
+            rid, cycle_number=i, timestamp=t0 + timedelta(minutes=i),
+            universe_size=100, snapshots_seen=30,
+            intents_generated=50 + i, intents_blocked=2,
+            fills_immediate=0, fills_rested=i,
+            elapsed_seconds=4.2 + i * 0.1,
+        )
+    rows = s.cycle_metrics_for_run(rid)
+    assert len(rows) == 3
+    assert [r.cycle_number for r in rows] == [0, 1, 2]
+    assert rows[-1].intents_generated == 52
+    assert rows[-1].fills_rested == 2
+
+
+def test_default_bot_log_path(monkeypatch):
+    """Falls through to /data/bot.log when /data exists, else local."""
+    from quant_tool.polymarket.storage import default_bot_log_path
+    monkeypatch.delenv("POLYMARKET_BOT_LOG_PATH", raising=False)
+    expected = "/data/bot.log" if Path("/data").is_dir() else str(Path("data") / "bot.log")
+    assert str(default_bot_log_path()) == expected
+    monkeypatch.setenv("POLYMARKET_BOT_LOG_PATH", "/tmp/foo.log")
+    assert str(default_bot_log_path()) == "/tmp/foo.log"

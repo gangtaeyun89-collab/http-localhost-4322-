@@ -90,6 +90,11 @@ class LiveRunner:
         self._mids: dict[str, float] = {}
         self._fill_strategy_by_token: dict[str, str] = {}
         self._stopping = False
+        # Per-cycle counters reset at the start of each tick().
+        self._cycle_intents = 0
+        self._cycle_blocked = 0
+        self._cycle_fills_immediate = 0
+        self._cycle_fills_rested = 0
 
     # ----- lifecycle ----------------------------------------------------
 
@@ -144,7 +149,14 @@ class LiveRunner:
     # ----- one cycle ----------------------------------------------------
 
     def tick(self, cycle: int) -> None:
+        cycle_start = time.monotonic()
         now = datetime.now(timezone.utc)
+        # Reset per-cycle counters so the metric reflects only this cycle.
+        self._cycle_intents = 0
+        self._cycle_blocked = 0
+        self._cycle_fills_immediate = 0
+        self._cycle_fills_rested = 0
+
         self._refresh_universe_if_due(cycle)
         if not self._universe:
             log.warning("no universe yet; skipping cycle")
@@ -157,8 +169,24 @@ class LiveRunner:
             self._update_mids(snap)
             for strategy in self.strategies:
                 for intent in strategy.on_snapshot(snap):
+                    self._cycle_intents += 1
                     self._submit(intent, snap, now)
         self._mark_equity(now)
+        # Persist the cycle metric so the live dashboard can chart it.
+        if self.run_id is not None:
+            self.storage.record_cycle_metric(
+                self.run_id, cycle_number=cycle, timestamp=now,
+                universe_size=len(self._universe),
+                snapshots_seen=len(snapshots),
+                intents_generated=self._cycle_intents,
+                intents_blocked=self._cycle_blocked,
+                fills_immediate=self._cycle_fills_immediate,
+                fills_rested=self._cycle_fills_rested,
+                elapsed_seconds=time.monotonic() - cycle_start,
+            )
+        log.info("[cycle %d] %d markets, %d intents (%d blocked), %d fills",
+                 cycle, len(snapshots), self._cycle_intents, self._cycle_blocked,
+                 self._cycle_fills_immediate + self._cycle_fills_rested)
 
     # ----- helpers ------------------------------------------------------
 
@@ -198,10 +226,12 @@ class LiveRunner:
             for trade in snap.trades:
                 for fill in self._consume_resting_for_trade(trade, now):
                     self._persist_fill(fill, snap.market.condition_id, fill_type="rested")
+                    self._cycle_fills_rested += 1
         else:
             for book in (snap.yes_book, snap.no_book):
                 for fill in self.broker.on_book(book, now=now):
                     self._persist_fill(fill, snap.market.condition_id, fill_type="rested")
+                    self._cycle_fills_rested += 1
 
     def _consume_resting_for_trade(self, trade, now: datetime) -> list[Fill]:
         # Mirror of backtest._match_trade_to_resting -- one resting order credited per print.
@@ -232,6 +262,7 @@ class LiveRunner:
     def _submit(self, intent: Intent, snap: MarketSnapshot, now: datetime) -> None:
         decision = self.risk.evaluate(intent, snap.market.condition_id, now)
         if decision is not RiskDecision.APPROVED:
+            self._cycle_blocked += 1
             log.debug("blocked %s %s: %s", intent.strategy, snap.market.condition_id, decision.value)
             return
         book = (snap.yes_book if intent.token_id == snap.market.yes_token().token_id
@@ -241,6 +272,7 @@ class LiveRunner:
         if fill is not None:
             self.risk.record_fill(snap.market.condition_id, fill.side, fill.price * fill.size)
             self._persist_fill(fill, snap.market.condition_id, fill_type="immediate")
+            self._cycle_fills_immediate += 1
 
     def _persist_fill(self, fill: Fill, condition_id: str, *, fill_type: str) -> None:
         assert self.run_id is not None

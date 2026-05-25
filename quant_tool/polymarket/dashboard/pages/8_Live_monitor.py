@@ -18,7 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from quant_tool.polymarket.storage import Storage, default_db_path
+from quant_tool.polymarket.storage import Storage, default_bot_log_path, default_db_path
 
 
 st.set_page_config(page_title="Live monitor", layout="wide")
@@ -61,6 +61,7 @@ auto = c2.checkbox("Auto-refresh every 5s while run is alive",
 fills = storage.fills_for_run(run.id, limit=500)
 equity_rows = storage.equity_for_run(run.id)
 positions = storage.positions_for_run(run.id, open_only=True)
+cycle_metrics = storage.cycle_metrics_for_run(run.id)
 
 # ----- KPI strip -----
 status_color = "green" if run.is_alive else "orange" if not run.ended_at else "gray"
@@ -109,6 +110,67 @@ if equity_rows:
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.info("No equity points yet -- the runner hasn't completed a cycle.")
+
+# ----- Live activity (last cycle + per-cycle chart) -----
+st.subheader("Bot activity")
+if cycle_metrics:
+    last_cycle = cycle_metrics[-1]
+    age = (datetime.now(timezone.utc) - last_cycle.timestamp).total_seconds()
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Last cycle", f"#{last_cycle.cycle_number}",
+              delta=f"{age:.0f}s ago" if age < 600 else f"{age/60:.0f}min ago",
+              delta_color="off")
+    c2.metric("Markets observed", last_cycle.snapshots_seen,
+              help=f"out of {last_cycle.universe_size} in the universe")
+    c3.metric("Intents generated", last_cycle.intents_generated,
+              delta=(f"-{last_cycle.intents_blocked} blocked"
+                     if last_cycle.intents_blocked else None),
+              delta_color="inverse" if last_cycle.intents_blocked else "off")
+    c4.metric("Fills this cycle",
+              last_cycle.fills_immediate + last_cycle.fills_rested)
+    c5.metric("Cycle time", f"{last_cycle.elapsed_seconds:.1f}s",
+              help="Wall-clock time to fetch universe + books + run strategies")
+
+    # Per-cycle line chart -- shows the bot's activity rhythm even with no fills
+    df = pd.DataFrame([{
+        "cycle": m.cycle_number,
+        "intents": m.intents_generated,
+        "blocked": m.intents_blocked,
+        "fills": m.fills_immediate + m.fills_rested,
+        "markets": m.snapshots_seen,
+    } for m in cycle_metrics])
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=df["cycle"], y=df["intents"], name="Intents",
+                          marker_color="#1f77b4"))
+    fig.add_trace(go.Bar(x=df["cycle"], y=df["blocked"], name="Blocked by risk",
+                          marker_color="#ff7f0e"))
+    fig.add_trace(go.Scatter(x=df["cycle"], y=df["fills"], name="Fills",
+                              mode="lines+markers",
+                              line=dict(color="#2ca02c", width=2),
+                              marker=dict(size=8)))
+    fig.update_layout(height=250, margin=dict(l=10, r=10, t=10, b=10),
+                       barmode="overlay", xaxis_title="Cycle #",
+                       yaxis_title="Count",
+                       legend=dict(orientation="h", y=1.1))
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("No cycle metrics yet -- the runner hasn't completed a cycle.")
+
+# ----- Live log tail -----
+st.subheader("Live bot log")
+log_path = st.text_input("Bot log path", value=str(default_bot_log_path()),
+                          help="The file the bot writes its activity to. On Fly.io "
+                               "this is `/data/bot.log`; locally it's `data/bot.log`.")
+log_p = Path(log_path)
+if log_p.exists():
+    try:
+        lines = log_p.read_text(errors="replace").splitlines()[-40:]
+        st.code("\n".join(lines) or "(empty)", language="text")
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not read log: {exc}")
+else:
+    st.info(f"Log file not found at `{log_path}`. The bot writes here once it "
+             "starts producing output.")
 
 # ----- Per-strategy attribution from fills -----
 st.subheader("Per-strategy fills")

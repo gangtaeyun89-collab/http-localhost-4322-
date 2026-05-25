@@ -81,6 +81,21 @@ class PositionRow:
     last_updated: datetime
 
 
+@dataclass(frozen=True)
+class CycleMetricRow:
+    """One per cycle the bot completes -- powers the live activity chart."""
+    run_id: int
+    cycle_number: int
+    timestamp: datetime
+    universe_size: int
+    snapshots_seen: int
+    intents_generated: int
+    intents_blocked: int
+    fills_immediate: int
+    fills_rested: int
+    elapsed_seconds: float
+
+
 class Storage:
     """Thin wrapper over a sqlite3 connection. Not thread-safe -- one per process."""
 
@@ -210,6 +225,35 @@ class Storage:
         cur = self._conn.execute(sql, (int(run_id),))
         return tuple(_row_to_position(r) for r in cur)
 
+    # ----- cycle metrics -----------------------------------------------
+
+    def record_cycle_metric(self, run_id: int, *, cycle_number: int,
+                             timestamp: datetime, universe_size: int,
+                             snapshots_seen: int, intents_generated: int,
+                             intents_blocked: int, fills_immediate: int,
+                             fills_rested: int, elapsed_seconds: float) -> None:
+        self._conn.execute(
+            "INSERT INTO cycle_metrics (run_id, cycle_number, timestamp, "
+            "universe_size, snapshots_seen, intents_generated, intents_blocked, "
+            "fills_immediate, fills_rested, elapsed_seconds) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (int(run_id), int(cycle_number), timestamp.isoformat(),
+             int(universe_size), int(snapshots_seen), int(intents_generated),
+             int(intents_blocked), int(fills_immediate), int(fills_rested),
+             float(elapsed_seconds)),
+        )
+
+    def cycle_metrics_for_run(self, run_id: int, *, limit: int | None = None
+                               ) -> tuple[CycleMetricRow, ...]:
+        sql = ("SELECT * FROM cycle_metrics WHERE run_id = ? "
+               "ORDER BY cycle_number ASC")
+        args: list[object] = [int(run_id)]
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(int(limit))
+        cur = self._conn.execute(sql, args)
+        return tuple(_row_to_cycle_metric(r) for r in cur)
+
 
 # ---------- module helpers ----------------------------------------------
 
@@ -264,12 +308,36 @@ def _row_to_position(row) -> PositionRow:
     )
 
 
+def _row_to_cycle_metric(row) -> CycleMetricRow:
+    return CycleMetricRow(
+        run_id=row["run_id"], cycle_number=row["cycle_number"],
+        timestamp=_parse_iso(row["timestamp"]),
+        universe_size=row["universe_size"], snapshots_seen=row["snapshots_seen"],
+        intents_generated=row["intents_generated"],
+        intents_blocked=row["intents_blocked"],
+        fills_immediate=row["fills_immediate"],
+        fills_rested=row["fills_rested"],
+        elapsed_seconds=row["elapsed_seconds"],
+    )
+
+
 def default_db_path() -> Path:
     """Where the dashboard and runner look for state by default."""
     override = os.environ.get("POLYMARKET_DB_PATH")
     if override:
         return Path(override)
     return Path("data") / "polymarket.sqlite"
+
+
+def default_bot_log_path() -> Path:
+    """Where the bot writes its activity log; the dashboard tails this."""
+    override = os.environ.get("POLYMARKET_BOT_LOG_PATH")
+    if override:
+        return Path(override)
+    # Fly.io mounts /data as a volume and the entrypoint writes there.
+    if Path("/data").is_dir():
+        return Path("/data/bot.log")
+    return Path("data") / "bot.log"
 
 
 _SCHEMA_SQL = """
@@ -321,4 +389,19 @@ CREATE TABLE IF NOT EXISTS positions (
     last_updated TEXT NOT NULL,
     PRIMARY KEY (run_id, token_id)
 );
+
+CREATE TABLE IF NOT EXISTS cycle_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES runs(id),
+    cycle_number INTEGER NOT NULL,
+    timestamp TEXT NOT NULL,
+    universe_size INTEGER NOT NULL,
+    snapshots_seen INTEGER NOT NULL,
+    intents_generated INTEGER NOT NULL,
+    intents_blocked INTEGER NOT NULL,
+    fills_immediate INTEGER NOT NULL,
+    fills_rested INTEGER NOT NULL,
+    elapsed_seconds REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cycle_metrics_run ON cycle_metrics(run_id, cycle_number);
 """

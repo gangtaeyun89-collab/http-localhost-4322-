@@ -97,6 +97,27 @@ def test_tick_persists_fill_via_trade_print(tmp_path):
     assert any(p.token_id == "y_c1" and p.shares > 0 for p in positions)
 
 
+def test_tick_records_cycle_metric(tmp_path):
+    """Every tick should persist a cycle_metric row -- powers the dashboard chart."""
+    markets = [_market("c1")]
+    books = {"y_c1": _book("y_c1", 0.40, 0.50), "n_c1": _book("n_c1", 0.50, 0.60)}
+    config = LiveRunnerConfig(
+        db_path=str(tmp_path / "live.sqlite"),
+        bankroll=1_000, interval_seconds=0.001, markets_per_cycle=1,
+        strategy_names=("market_maker",), max_per_market=0.5, max_total=1.0,
+    )
+    runner = LiveRunner(config, clob=_FakeClob(books), gamma=_FakeGamma(markets))
+    runner.start()
+    runner.tick(0)
+    runner.tick(1)
+    metrics = runner.storage.cycle_metrics_for_run(runner.run_id)
+    assert len(metrics) == 2
+    # market_maker quotes 4 sides on a wide spread (BUY/SELL on YES+NO).
+    assert metrics[0].intents_generated >= 4
+    assert metrics[0].snapshots_seen == 1
+    assert metrics[0].universe_size == 1
+
+
 def test_run_id_lifecycle(tmp_path):
     config = LiveRunnerConfig(db_path=str(tmp_path / "live.sqlite"),
                                bankroll=1_000, interval_seconds=0.001,

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
-from quant_tool.polymarket.storage import Storage, default_db_path
+from quant_tool.polymarket.storage import Storage, default_bot_log_path, default_db_path
 from quant_tool.polymarket.strategy import STRATEGY_REGISTRY
 
 
@@ -39,7 +39,7 @@ def on_streamlit_cloud() -> bool:
 # ---------- bot lifecycle (only meaningful locally) ----------------------
 
 PID_FILE = Path("data") / "bot.pid"
-LOG_FILE = Path("data") / "bot.log"
+LOG_FILE = default_bot_log_path()
 
 
 def _is_alive(pid: int) -> bool:
