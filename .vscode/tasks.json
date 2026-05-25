@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Polymarket: run tests",
+      "type": "shell",
+      "command": "python -m pytest tests/polymarket/ -q",
+      "group": { "kind": "test", "isDefault": true },
+      "options": { "env": { "PYTHONPATH": "${workspaceFolder}" } },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Polymarket: dashboard",
+      "type": "shell",
+      "command": "streamlit run quant_tool/polymarket/dashboard/app.py --browser.gatherUsageStats false",
+      "isBackground": true,
+      "options": { "env": { "PYTHONPATH": "${workspaceFolder}" } },
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "polymarket" }
+    },
+    {
+      "label": "Polymarket: live bot (paper)",
+      "type": "shell",
+      "command": "python scripts/polymarket_live.py --db data/polymarket.sqlite --interval 60 --markets 30 --bankroll 10000",
+      "isBackground": true,
+      "options": { "env": { "PYTHONPATH": "${workspaceFolder}" } },
+      "presentation": { "reveal": "always", "panel": "dedicated", "group": "polymarket" }
+    },
+    {
+      "label": "Polymarket: bot + dashboard",
+      "dependsOn": ["Polymarket: live bot (paper)", "Polymarket: dashboard"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    }
+  ]
+}

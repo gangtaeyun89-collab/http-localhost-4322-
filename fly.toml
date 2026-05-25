@@ -1,0 +1,39 @@
+# Fly.io configuration for the Polymarket bot + dashboard combo.
+# Replace `app = ...` with a name you choose during `fly launch`.
+
+app = "tk3719polybot"
+primary_region = "iad"  # US East (Ashburn) -- low latency to Polygon RPC
+
+# Single tiny shared-CPU machine. ~$2/month, well under the $5 monthly free
+# credit Fly.io gives every account.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Persistent volume for the SQLite DB so fills + equity history survive
+# redeploys. Mount path matches POLYMARKET_DB_PATH in the Dockerfile.
+[[mounts]]
+  source = "polymarket_data"
+  destination = "/data"
+
+# Streamlit serves on 8080; Fly.io terminates TLS and routes 443 -> 8080.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"   # keep the bot running 24/7
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 50
+    soft_limit = 25
+
+# Build from the Dockerfile checked into the repo.
+[build]
+
+# Make Streamlit cookies cross-domain friendly behind the Fly proxy.
+[env]
+  STREAMLIT_SERVER_ENABLE_CORS = "false"
+  STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION = "true"

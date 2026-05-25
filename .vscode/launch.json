@@ -1,0 +1,63 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Polymarket: live bot (paper)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/polymarket_live.py",
+      "args": [
+        "--db", "data/polymarket.sqlite",
+        "--interval", "60",
+        "--markets", "30",
+        "--bankroll", "10000"
+      ],
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Polymarket: capture series",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/polymarket_capture.py",
+      "args": [
+        "--output", "capture.jsonl",
+        "--interval", "60",
+        "--duration", "3600",
+        "--markets", "25"
+      ],
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Polymarket: smoke test",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/polymarket_smoke.py",
+      "args": ["--markets", "10", "--save", "snapshot.json"],
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Polymarket: dashboard (Streamlit)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "${workspaceFolder}/quant_tool/polymarket/dashboard/app.py",
+        "--browser.gatherUsageStats", "false"
+      ],
+      "env": { "PYTHONPATH": "${workspaceFolder}" },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Polymarket: bot + dashboard",
+      "configurations": ["Polymarket: live bot (paper)", "Polymarket: dashboard (Streamlit)"],
+      "stopAll": true
+    }
+  ]
+}
