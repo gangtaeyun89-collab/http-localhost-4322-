@@ -18,6 +18,7 @@ from quant_tool.regime.hmm import GaussianHMM
 from quant_tool.regime.bocpd import bocpd
 from quant_tool.regime.features import build_features
 from quant_tool.regime.signals import RegimeSignal, generate_signals
+from quant_tool.regime.backtest import RegimeBacktestResult, run_regime_backtest
 
 __all__ = [
     "GaussianHMM",
@@ -25,4 +26,6 @@ __all__ = [
     "build_features",
     "RegimeSignal",
     "generate_signals",
+    "RegimeBacktestResult",
+    "run_regime_backtest",
 ]

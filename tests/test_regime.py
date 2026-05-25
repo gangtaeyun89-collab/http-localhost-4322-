@@ -11,7 +11,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from quant_tool.regime import GaussianHMM, bocpd, build_features, generate_signals
+from quant_tool.regime import (
+    GaussianHMM,
+    bocpd,
+    build_features,
+    generate_signals,
+    run_regime_backtest,
+)
 from quant_tool.regime.bocpd import recent_change_prob
 
 
@@ -82,3 +88,41 @@ def test_build_features_no_lookahead():
     assert feats.index[0] > close.index[0]
     # Drawdown must be <= 0 by definition.
     assert (feats["dd"] <= 1e-12).all()
+
+
+def test_backtest_avoids_known_crash():
+    """A perfect-foresight signal must reduce drawdown vs buy-and-hold.
+
+    This is a regression test on the look-ahead-free timing convention, not
+    a claim that the real HMM has perfect foresight.
+    """
+    idx = pd.date_range("2020-01-01", periods=400, freq="B")
+    rng = np.random.default_rng(1)
+    # 200 bars of mild drift, then a sustained crash.
+    drift = rng.normal(0.001, 0.012, 200)
+    crash = rng.normal(-0.005, 0.03, 200)
+    r = np.concatenate([drift, crash])
+    close = pd.Series(np.exp(np.cumsum(r)) * 100, index=idx, name="close")
+
+    # Oracle signal: HOLD during the drift, REDUCE during the crash.
+    action = pd.Series("HOLD", index=idx)
+    action.iloc[200:] = "REDUCE"
+    signals = pd.DataFrame({"action": action})
+
+    res = run_regime_backtest(close, signals, cost_bps=10.0)
+    assert res.stats["total_return"] > res.benchmark_stats["total_return"]
+    assert res.stats["max_drawdown"] > res.benchmark_stats["max_drawdown"]  # closer to zero
+
+
+def test_backtest_no_lookahead():
+    """A signal must not be able to act on the same bar it observes."""
+    idx = pd.date_range("2024-01-01", periods=10, freq="B")
+    # Price jumps up exactly once, on bar 5.
+    close = pd.Series([100.0] * 5 + [110.0] * 5, index=idx)
+    # Oracle action that "knows" to be HOLD only on the jump bar.
+    action = pd.Series(["REDUCE"] * 5 + ["HOLD"] + ["REDUCE"] * 4, index=idx)
+    res = run_regime_backtest(close, pd.DataFrame({"action": action}), cost_bps=0)
+    # Held weight at bar 5 must come from bar 4's target (REDUCE -> 0),
+    # so the 10% jump must NOT be earned.
+    held_at_jump = res.bars["held_weight"].iloc[5]
+    assert held_at_jump == 0.0

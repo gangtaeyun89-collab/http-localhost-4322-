@@ -28,6 +28,7 @@ from quant_tool.regime import (
     bocpd,
     build_features,
     generate_signals,
+    run_regime_backtest,
 )
 from quant_tool.regime.bocpd import recent_change_prob
 from quant_tool.regime.signals import latest
@@ -71,6 +72,17 @@ def main() -> int:
     parser.add_argument("--persistence", type=int, default=3)
     parser.add_argument("--plot", type=Path, default=None, help="Optional output PNG")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--backtest",
+        action="store_true",
+        help="Backtest the signal rule against buy-and-hold",
+    )
+    parser.add_argument(
+        "--cost-bps",
+        type=float,
+        default=25.0,
+        help="Round-trip cost in basis points (KRX retail ~25 bps)",
+    )
     args = parser.parse_args()
 
     close = load_close(args.data, args.symbol)
@@ -116,6 +128,18 @@ def main() -> int:
     print(f"  Suggested action : {cur.action}")
     print()
     print(DISCLAIMER)
+
+    if args.backtest:
+        bt = run_regime_backtest(close.loc[signals.index], signals, cost_bps=args.cost_bps)
+        print()
+        print(bt.describe())
+        edge = bt.stats["total_return"] - bt.benchmark_stats["total_return"]
+        dd_gap = bt.benchmark_stats["max_drawdown"] - bt.stats["max_drawdown"]
+        verdict = "PASS" if (edge > 0 or dd_gap > 0.05) else "FAIL"
+        print(f"Edge vs buy-and-hold (total return)  : {edge:+.2%}")
+        print(f"Max-drawdown improvement              : {dd_gap:+.2%}")
+        print(f"Verdict                               : {verdict}")
+        print("  (PASS = beats buy-and-hold on return OR cuts drawdown by >5pp)")
 
     if args.plot is not None:
         _plot(close, feats, posterior, signals, crisis_state, args.plot)
