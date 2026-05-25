@@ -11,6 +11,7 @@ from quant_tool.polymarket.strategy.smart_market_maker import SmartMarketMaker
 from quant_tool.polymarket.strategy.arb_yes_no import YesNoArb
 from quant_tool.polymarket.strategy.copy_trader import CopyTrader
 from quant_tool.polymarket.strategy.signal_model import SignalModel
+from quant_tool.polymarket.strategy.mean_reversion import MeanReversion
 
 STRATEGY_REGISTRY: dict[str, type[Strategy]] = {
     "market_maker": MarketMaker,
@@ -18,6 +19,7 @@ STRATEGY_REGISTRY: dict[str, type[Strategy]] = {
     "arb_yes_no": YesNoArb,
     "copy_trader": CopyTrader,
     "signal_model": SignalModel,
+    "mean_reversion": MeanReversion,
 }
 
 __all__ = [
@@ -30,4 +32,5 @@ __all__ = [
     "YesNoArb",
     "CopyTrader",
     "SignalModel",
+    "MeanReversion",
 ]
