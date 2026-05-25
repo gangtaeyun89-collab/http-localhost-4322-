@@ -60,10 +60,22 @@ def get_config() -> DashboardConfig:
     )
 
 
-def run_and_cache_backtest(cfg: DashboardConfig) -> BacktestResult | None:
-    """Run the backtest and stash the result in session_state."""
+def run_and_cache_backtest(
+    cfg: DashboardConfig,
+    *,
+    max_batches: int | None = None,
+    progress_callback=None,
+) -> BacktestResult | None:
+    """Run the backtest and stash the result in session_state.
+
+    ``max_batches`` caps how many of the most recent batches are replayed,
+    so a 6-hour capture doesn't OOM the Fly machine. ``progress_callback``
+    is forwarded to :func:`run_backtest` for the dashboard's progress bar.
+    """
     if cfg.capture_path is None or not Path(cfg.capture_path).exists():
         return None
+    # Wipe any previous result so a stale chart isn't shown if this run fails.
+    st.session_state.pop(BACKTEST_KEY, None)
     result = run_backtest(
         cfg.capture_path,
         strategy_names=cfg.enabled,
@@ -71,6 +83,8 @@ def run_and_cache_backtest(cfg: DashboardConfig) -> BacktestResult | None:
         max_per_market=cfg.max_per_market,
         max_total=cfg.max_total,
         strategy_overrides=cfg.params,
+        max_batches=max_batches,
+        progress_callback=progress_callback,
     )
     st.session_state[BACKTEST_KEY] = result
     return result

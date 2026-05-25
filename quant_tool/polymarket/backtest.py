@@ -68,11 +68,31 @@ def run_backtest(
     max_per_market: float = 0.02,
     max_total: float = 0.50,
     strategy_overrides: dict[str, dict] | None = None,
+    max_batches: int | None = None,
+    progress_callback: "callable | None" = None,
 ) -> BacktestResult:
-    """Replay a JSONL capture through strategies + broker; return structured results."""
+    """Replay a JSONL capture through strategies + broker; return structured results.
+
+    ``max_batches`` -- if set, only replay the last N batches (keeps memory and
+    time bounded for huge captures). ``progress_callback`` is called as each
+    batch is replayed with ``(batches_done, total_batches)`` so the dashboard
+    can show a real progress bar.
+    """
     names = list(strategy_names) if strategy_names else list(STRATEGY_REGISTRY)
     overrides = strategy_overrides or {}
     strategies = {n: STRATEGY_REGISTRY[n](**overrides.get(n, {})) for n in names}
+
+    # Count batches up front so we can show progress and apply max_batches.
+    # Reading line counts is O(file size) but doesn't hold any batch in memory.
+    try:
+        with Path(capture_path).open("rb") as fh:
+            total_lines = sum(1 for _ in fh)
+    except Exception:  # noqa: BLE001
+        total_lines = 0
+    skip_until = 0
+    if max_batches is not None and total_lines > max_batches:
+        skip_until = total_lines - int(max_batches)
+    total_to_replay = max(0, total_lines - skip_until)
 
     broker = PaperBroker(starting_cash=bankroll)
     risk = RiskGate(
@@ -91,9 +111,16 @@ def run_backtest(
     snapshots_seen = 0
     prints_seen = 0
 
-    for batch in iter_batches(capture_path):
+    for batch_idx, batch in enumerate(iter_batches(capture_path)):
+        if batch_idx < skip_until:
+            continue
         batches_seen += 1
         snapshots_seen += len(batch.snapshots)
+        if progress_callback is not None:
+            try:
+                progress_callback(batches_seen, total_to_replay)
+            except Exception:  # noqa: BLE001
+                pass  # progress is best-effort
 
         # Print-based fill matching (preferred when trades are present)
         for snap in batch.snapshots:

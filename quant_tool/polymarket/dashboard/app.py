@@ -131,14 +131,45 @@ with st.sidebar:
                                                 value=float(st.session_state["risk_total"]),
                                                 step=0.05, format="%.2f")
 
+    max_batches = st.slider(
+        "Max batches to replay",
+        min_value=10, max_value=2000, value=200, step=10,
+        help="Caps how many of the most recent batches the backtest replays. "
+             "Smaller values run faster and avoid OOM on long captures.",
+    )
+
     if st.button("Run backtest", type="primary", use_container_width=True):
-        with st.spinner("Replaying capture..."):
-            cfg = get_config()
-            result = run_and_cache_backtest(cfg)
-        if result is None:
-            st.error("No capture file selected or path doesn't exist.")
+        cfg = get_config()
+        # Validate the inputs before we even start so the user gets a fast,
+        # clear error instead of a hanging spinner.
+        if cfg.capture_path is None or not Path(cfg.capture_path).exists():
+            st.error("No capture file. Pick a path, upload one, or click "
+                      "**Generate capture now** above.")
         else:
-            st.success(f"Replayed {result.batches} batches.")
+            progress = st.progress(0.0, text="Loading...")
+            status = st.empty()
+            try:
+                def _on_progress(done: int, total: int) -> None:
+                    pct = (done / total) if total else 0
+                    progress.progress(min(1.0, pct),
+                                       text=f"Replaying batch {done}/{total}")
+                result = run_and_cache_backtest(
+                    cfg, max_batches=int(max_batches),
+                    progress_callback=_on_progress,
+                )
+            except Exception as exc:  # noqa: BLE001
+                progress.empty()
+                status.error(f"Backtest failed: {exc}")
+                st.exception(exc)
+                result = None
+            else:
+                progress.empty()
+                if result is None:
+                    status.error("Backtest returned no result.")
+                else:
+                    status.success(
+                        f"Replayed {result.batches} batches "
+                        f"({result.snapshots} snapshots, {result.prints_seen} prints).")
 
 # ---------- Main panel ----------
 result = st.session_state.get(BACKTEST_KEY)

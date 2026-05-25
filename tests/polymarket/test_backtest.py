@@ -86,6 +86,45 @@ def test_run_backtest_credits_print_fill(tmp_path):
     assert mm.notional_filled > 0
 
 
+def test_run_backtest_max_batches_replays_only_last_n(tmp_path):
+    """max_batches must cap replay length and pick the most recent batches."""
+    cap = tmp_path / "long.jsonl"
+    t0 = datetime(2026, 5, 24, 12, tzinfo=timezone.utc)
+    for i in range(10):
+        ts = t0 + timedelta(minutes=2 * i)
+        append_batch(cap, [
+            MarketSnapshot(market=_market("c1"),
+                           yes_book=_book("y_c1", 0.40, 0.50, ts),
+                           no_book=_book("n_c1", 0.49, 0.51, ts))
+        ], captured_at=ts, universe_size=1)
+
+    result = run_backtest(cap, strategy_names=["market_maker"],
+                          bankroll=1000, max_per_market=0.5, max_total=1.0,
+                          max_batches=3)
+    assert result.batches == 3
+    # The equity curve's timestamps should be from the LAST 3 batches.
+    last_ts = result.equity_curve[-1].timestamp
+    assert last_ts == t0 + timedelta(minutes=18)  # 10th batch (2 * 9)
+
+
+def test_run_backtest_progress_callback_fires_per_batch(tmp_path):
+    cap = tmp_path / "ten.jsonl"
+    t0 = datetime(2026, 5, 24, 12, tzinfo=timezone.utc)
+    for i in range(5):
+        ts = t0 + timedelta(minutes=i)
+        append_batch(cap, [
+            MarketSnapshot(market=_market("c1"),
+                           yes_book=_book("y_c1", 0.40, 0.50, ts),
+                           no_book=_book("n_c1", 0.49, 0.51, ts))
+        ], captured_at=ts, universe_size=1)
+
+    seen = []
+    def cb(done, total): seen.append((done, total))
+    run_backtest(cap, strategy_names=["market_maker"], bankroll=1000,
+                 max_per_market=0.5, max_total=1.0, progress_callback=cb)
+    assert seen == [(1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
+
+
 def test_run_backtest_respects_strategy_overrides(tmp_path):
     """min_spread_ticks=10 should suppress all MM intents on a 2-cent-spread book."""
     cap = tmp_path / "wide.jsonl"
