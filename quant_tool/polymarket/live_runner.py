@@ -181,6 +181,12 @@ class LiveRunner:
                 log.exception("capture write failed; continuing")
         for snap in snapshots:
             self._match_resting_against_trades(snap, now)
+        # Smart market-makers ask us to cancel their stale orders so each cycle
+        # starts with a fresh quote layer. The strategy signals this via its
+        # ``cancel_before_quoting`` flag.
+        for strategy in self.strategies:
+            if getattr(strategy, "cancel_before_quoting", False):
+                self.broker.cancel_all_for_strategy(strategy.name)
         for snap in snapshots:
             self._update_mids(snap)
             for strategy in self.strategies:

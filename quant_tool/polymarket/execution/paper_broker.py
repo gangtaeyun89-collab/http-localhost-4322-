@@ -160,6 +160,17 @@ class PaperBroker:
         self.open_orders.clear()
         return n
 
+    def cancel_all_for_strategy(self, strategy: str) -> int:
+        """Cancel every resting order placed by ``strategy``. Used by smart MMs
+        that want to refresh their quotes every cycle to avoid adverse selection
+        from stale orders.
+        """
+        to_remove = [oid for oid, ro in self.open_orders.items()
+                     if ro.intent.strategy == strategy]
+        for oid in to_remove:
+            self.open_orders.pop(oid, None)
+        return len(to_remove)
+
     # ----- accounting ----------------------------------------------------
 
     def _record_fill(self, strategy: str, token_id: str, side: Side,

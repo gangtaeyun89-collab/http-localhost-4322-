@@ -114,6 +114,10 @@ def run_backtest(
                     s.rested_fills += 1
                     s.notional_filled += fill.price * fill.size
 
+        # Smart MMs cancel-and-replace each cycle to avoid stale-quote pickoffs.
+        for name, strategy in strategies.items():
+            if getattr(strategy, "cancel_before_quoting", False):
+                broker.cancel_all_for_strategy(name)
         # Run strategies + risk-check + submit
         for snap in batch.snapshots:
             _update_mids(snap, last_mids)
