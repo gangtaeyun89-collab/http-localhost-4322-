@@ -74,6 +74,47 @@ with st.sidebar:
         dest = target / uploaded.name
         dest.write_bytes(uploaded.getbuffer())
         text_path = str(dest)
+
+    # Quick on-demand capture so the user doesn't have to wait for the live
+    # bot or upload anything. Three cycles of 10 markets takes ~15-30 seconds.
+    if st.button("Generate capture now (3 cycles)", use_container_width=True):
+        from datetime import datetime as _dt, timezone as _tz
+        from quant_tool.polymarket.data.clob_client import ClobClient
+        from quant_tool.polymarket.data.gamma_client import GammaClient
+        from quant_tool.polymarket.data.snapshots import append_batch
+        from quant_tool.polymarket.strategy.base import MarketSnapshot as _MS
+        target = Path(".dashboard_uploads")
+        target.mkdir(exist_ok=True)
+        dest = target / f"inline_capture_{int(_dt.now().timestamp())}.jsonl"
+        gamma = GammaClient()
+        clob = ClobClient()
+        progress = st.progress(0.0, text="Fetching universe...")
+        try:
+            universe = gamma.active_markets(limit=100)
+            sample = universe[:10]
+            for cycle in range(3):
+                progress.progress((cycle + 0.1) / 3,
+                                   text=f"Cycle {cycle+1}/3: fetching books...")
+                snaps = []
+                for m in sample:
+                    try:
+                        yb = clob.orderbook(m.yes_token().token_id)
+                        nb = clob.orderbook(m.no_token().token_id)
+                        snaps.append(_MS(market=m, yes_book=yb, no_book=nb))
+                    except Exception:  # noqa: BLE001
+                        pass
+                if snaps:
+                    append_batch(dest, snaps,
+                                  captured_at=_dt.now(_tz.utc),
+                                  universe_size=len(universe))
+                progress.progress((cycle + 1) / 3,
+                                   text=f"Cycle {cycle+1}/3 done.")
+            progress.empty()
+            text_path = str(dest)
+            st.success(f"Captured 3 cycles to `{dest}`. Click **Run backtest**.")
+        except Exception as exc:  # noqa: BLE001
+            progress.empty()
+            st.error(f"Capture failed: {exc}")
     if text_path:
         st.session_state[CAPTURE_PATH_KEY] = text_path
 
