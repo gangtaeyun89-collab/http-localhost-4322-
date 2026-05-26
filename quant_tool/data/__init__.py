@@ -5,6 +5,7 @@ from quant_tool.data.ingestion import (
     generate_universe,
     load_ohlcv,
     load_pair,
+    load_universe_from_dir,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "generate_universe",
     "load_ohlcv",
     "load_pair",
+    "load_universe_from_dir",
 ]
