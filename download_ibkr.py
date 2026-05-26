@@ -44,7 +44,9 @@ _UNIVERSE_NAMES = {
     "megacap_tech": universes.MEGACAP_TECH,
     "sp500_top_100": universes.SP500_TOP_100,
     "all_etfs": universes.all_etfs(),
+    "all_industries": universes.all_industry_baskets(),
     "all": universes.all_tickers(),
+    **universes.INDUSTRY_BASKETS,
 }
 
 
