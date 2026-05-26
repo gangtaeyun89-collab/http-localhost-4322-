@@ -87,11 +87,11 @@ def main() -> None:
         return
 
     print("\n" + "-" * 60)
-    print(f"{'base':<10}{'quote':<10}{'p-value':>12}{'beta':>10}{'half-life':>14}")
+    print(f"{'base':<10}{'quote':<10}{'p-value':>12}{'ADF stat':>12}{'half-life':>14}")
     print("-" * 60)
     for r in discovery.pairs:
         print(
-            f"{r.base:<10}{r.quote:<10}{r.pvalue:>12.4g}{r.beta:>10.4f}"
+            f"{r.base:<10}{r.quote:<10}{r.pvalue:>12.4g}{r.statistic:>12.4f}"
             f"{r.half_life:>14.2f}"
         )
     print("-" * 60)
