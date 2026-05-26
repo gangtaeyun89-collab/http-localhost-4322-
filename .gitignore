@@ -6,12 +6,22 @@ __pycache__/
 .venv/
 venv/
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
 # Credentials and secrets -- never commit exchange API keys
 .env
+.env.local
 config/credentials.yaml
 *.key
 
 # Data and run artefacts
 data/storage/*.parquet
 market_data/
+results/
 *.log
