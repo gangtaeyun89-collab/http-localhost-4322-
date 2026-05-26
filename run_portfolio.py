@@ -26,8 +26,11 @@ from __future__ import annotations
 
 import argparse
 
+from dataclasses import replace
+
 from quant_tool.backtest.portfolio import portfolio_backtest
-from quant_tool.config.settings import BacktestConfig, PairConfig
+from quant_tool.config.settings import BacktestConfig, CostConfig, PairConfig
+from quant_tool.data.features import infer_bars_per_year
 from quant_tool.data.ingestion import generate_universe, load_universe_from_dir
 from quant_tool.monitoring import get_logger
 from quant_tool.strategy.discovery import discover_pairs
@@ -65,6 +68,18 @@ def main() -> None:
     parser.add_argument(
         "--kelly-fraction", type=float, default=0.25, help="fractional-Kelly multiplier"
     )
+    parser.add_argument(
+        "--asset-class",
+        choices=["equity", "crypto"],
+        default="equity",
+        help="cost preset and calendar for annualisation (default: equity)",
+    )
+    parser.add_argument(
+        "--bars-per-year",
+        type=int,
+        default=None,
+        help="override the annualisation factor; otherwise inferred from --csv-dir",
+    )
     args = parser.parse_args()
 
     if args.csv_dir:
@@ -96,9 +111,22 @@ def main() -> None:
         )
     print("-" * 60)
 
+    cost = (
+        CostConfig.for_crypto()
+        if args.asset_class == "crypto"
+        else CostConfig.for_us_equity()
+    )
+    if args.bars_per_year is not None:
+        bpy = args.bars_per_year
+    else:
+        bpy = infer_bars_per_year(universe.index, asset_class=args.asset_class)
+    log.info("Annualisation: bars_per_year=%d (asset_class=%s)", bpy, args.asset_class)
+
     config = BacktestConfig(
         pair=PairConfig(base="base", quote="quote"),
         hedge_method="kalman",
+        cost=cost,
+        bars_per_year=bpy,
         target_volatility=0.15,
     )
     pairs = [(result.base, result.quote) for result in discovery.pairs]

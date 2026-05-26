@@ -37,8 +37,14 @@ import pandas as pd
 from quant_tool.ai.kalman_filter import KalmanHedge
 from quant_tool.backtest.engine import run_backtest
 from quant_tool.backtest.walk_forward import walk_forward
-from quant_tool.config.settings import BacktestConfig, PairConfig, load_config
-from quant_tool.data.features import align_prices
+from quant_tool.config.settings import (
+    BacktestConfig,
+    CostConfig,
+    PairConfig,
+    SignalConfig,
+    load_config,
+)
+from quant_tool.data.features import align_prices, infer_bars_per_year
 from quant_tool.data.ingestion import (
     fetch_ohlcv,
     generate_cointegrated_pair,
@@ -72,16 +78,16 @@ def _load_prices(args: argparse.Namespace, config: BacktestConfig) -> pd.DataFra
     return generate_cointegrated_pair(n=args.bars, beta_drift_vol=0.0008)
 
 
-def _screen(prices: pd.DataFrame) -> None:
-    """Print a cointegration screen; degrade gracefully without statsmodels."""
+def _screen(prices: pd.DataFrame):
+    """Print a cointegration screen and return the result, or None on failure."""
     try:
         result = cointegration_test(prices["base"], prices["quote"])
     except ImportError:
         log.warning("statsmodels not installed -- skipping cointegration screen")
-        return
+        return None
     except Exception as exc:  # degenerate input (zero variance, too short, ...)
         log.warning("cointegration screen skipped: %s", exc)
-        return
+        return None
     verdict = "COINTEGRATED" if result.is_cointegrated else "not cointegrated"
     log.info(
         "Cointegration screen: p=%.4f, half-life=%.1f bars -> %s",
@@ -89,6 +95,7 @@ def _screen(prices: pd.DataFrame) -> None:
         result.half_life,
         verdict,
     )
+    return result
 
 
 def main() -> None:
@@ -129,6 +136,26 @@ def main() -> None:
     parser.add_argument(
         "--test-size", type=int, default=500, help="walk-forward test window (bars)"
     )
+    parser.add_argument(
+        "--asset-class",
+        choices=["equity", "crypto"],
+        default="equity",
+        help="picks the cost preset and the calendar used for annualisation; "
+        "default is US equities (252 sessions/year, zero-commission costs)",
+    )
+    parser.add_argument(
+        "--bars-per-year",
+        type=int,
+        default=None,
+        help="override the annualisation factor; otherwise inferred from the "
+        "CSV's timestamp spacing for --base-csv mode",
+    )
+    parser.add_argument(
+        "--tune-lookback",
+        action="store_true",
+        help="size zscore_lookback to the cointegration screen's half-life "
+        "(window = 3 x half-life); recommended for daily equity pairs",
+    )
     args = parser.parse_args()
 
     if bool(args.base_csv) != bool(args.quote_csv):
@@ -137,8 +164,14 @@ def main() -> None:
     if args.config:
         config = load_config(args.config)
     else:
+        cost = (
+            CostConfig.for_crypto()
+            if args.asset_class == "crypto"
+            else CostConfig.for_us_equity()
+        )
         config = BacktestConfig(
             pair=PairConfig(base="ETH/USDT", quote="BTC/USDT"),
+            cost=cost,
             target_volatility=0.15,
         )
     if args.method:
@@ -146,7 +179,35 @@ def main() -> None:
 
     prices = _load_prices(args, config)
     log.info("Loaded %d aligned bars", len(prices))
-    _screen(prices)
+
+    # Annualise to the actual bar resolution -- 8760 (crypto hours) on daily
+    # equity data inflates Sharpe by ~5.9x and breaks vol-target sizing.
+    if args.bars_per_year is not None:
+        bpy = args.bars_per_year
+    else:
+        bpy = infer_bars_per_year(prices.index, asset_class=args.asset_class)
+    if bpy != config.bars_per_year:
+        log.info("Annualisation: bars_per_year=%d (was %d)", bpy, config.bars_per_year)
+        config = replace(config, bars_per_year=bpy)
+
+    screen = _screen(prices)
+
+    if args.tune_lookback:
+        if screen is None:
+            log.warning("--tune-lookback skipped: cointegration screen unavailable")
+        else:
+            tuned = SignalConfig.for_half_life(
+                screen.half_life,
+                entry_z=config.signal.entry_z,
+                exit_z=config.signal.exit_z,
+                stop_z=config.signal.stop_z,
+            )
+            log.info(
+                "Tuned zscore_lookback=%d for half-life=%.1f bars",
+                tuned.zscore_lookback,
+                screen.half_life,
+            )
+            config = replace(config, signal=tuned)
 
     if args.fit_kalman and (args.compare or config.hedge_method == "kalman"):
         fitted = KalmanHedge.fit(prices["base"], prices["quote"])

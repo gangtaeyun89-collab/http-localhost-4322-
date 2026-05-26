@@ -15,8 +15,9 @@ from typing import Any
 class CostConfig:
     """Round-trip trading cost assumptions, expressed in basis points per side.
 
-    Crypto taker fees plus slippage routinely consume most of a mean-reversion
-    edge, so these defaults are deliberately conservative.
+    Defaults are crypto taker fees plus slippage (conservative). For US equities
+    on a zero-commission broker, use :meth:`for_us_equity` -- the fees are zero
+    but slippage at typical retail size is still a couple of bps and matters.
     """
 
     taker_fee_bps: float = 6.0
@@ -28,10 +29,31 @@ class CostConfig:
         """Cost charged per unit of notional traded on one leg (fraction)."""
         return (self.taker_fee_bps + self.slippage_bps) / 1e4
 
+    @classmethod
+    def for_us_equity(cls) -> "CostConfig":
+        """Cost preset for zero-commission US equity brokers (IBKR Tiered, etc).
+
+        Fees are zero on most retail US equity venues; the remaining drag is
+        bid-ask half-spread plus market impact, roughly 1-3 bps per side at
+        small retail size in liquid names.
+        """
+        return cls(taker_fee_bps=0.0, slippage_bps=2.0, funding_bps_per_day=0.0)
+
+    @classmethod
+    def for_crypto(cls) -> "CostConfig":
+        """Cost preset for a typical crypto centralised exchange (taker)."""
+        return cls(taker_fee_bps=6.0, slippage_bps=2.0, funding_bps_per_day=0.0)
+
 
 @dataclass(frozen=True)
 class SignalConfig:
-    """Z-score window and entry/exit thresholds for the spread."""
+    """Z-score window and entry/exit thresholds for the spread.
+
+    A common failure mode: defaults tuned to short crypto half-lives (60 bar
+    lookback, entry_z=2.0) applied to a 45-bar half-life equity pair will miss
+    most of the cycle. Size the lookback to the pair's half-life via
+    :meth:`for_half_life`.
+    """
 
     zscore_lookback: int = 60
     entry_z: float = 2.0
@@ -43,6 +65,33 @@ class SignalConfig:
             raise ValueError("zscore_lookback must be >= 2")
         if not 0 <= self.exit_z < self.entry_z < self.stop_z:
             raise ValueError("require 0 <= exit_z < entry_z < stop_z")
+
+    @classmethod
+    def for_half_life(
+        cls,
+        half_life: float,
+        multiplier: float = 3.0,
+        entry_z: float = 2.0,
+        exit_z: float = 0.5,
+        stop_z: float = 4.0,
+        floor: int = 20,
+        cap: int = 500,
+    ) -> "SignalConfig":
+        """Build a SignalConfig sized to a pair's mean-reversion half-life.
+
+        Rule of thumb: the z-score window should be a few times the half-life
+        so the spread visits both extremes within the window. ``multiplier``
+        defaults to 3 (window = 3 half-lives); shrink it to react faster on
+        fast pairs, grow it on slow ones. ``floor``/``cap`` keep pathological
+        half-life estimates from producing useless windows.
+        """
+        lookback = int(round(max(floor, min(cap, multiplier * half_life))))
+        return cls(
+            zscore_lookback=lookback,
+            entry_z=entry_z,
+            exit_z=exit_z,
+            stop_z=stop_z,
+        )
 
 
 @dataclass(frozen=True)
@@ -68,7 +117,10 @@ class BacktestConfig:
     hedge_method: str = "kalman"  # "ols" or "kalman"
     hedge_lookback: int = 500  # OLS hedge-ratio window; unused by Kalman
     kalman_delta: float = 1e-7  # Kalman hedge-drift rate; KalmanHedge.fit tunes it
-    bars_per_year: int = 24 * 365
+    # 252 (daily US equities) is a safer default than 24*365 (hourly crypto)
+    # because mis-annualisation silently rescales Sharpe/CAGR. For crypto or
+    # intraday data, pass infer_bars_per_year(prices.index, ...) explicitly.
+    bars_per_year: int = 252
     initial_capital: float = 10_000.0
     target_volatility: float | None = None  # annualised; None disables sizing
     vol_lookback: int = 100

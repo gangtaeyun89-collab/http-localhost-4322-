@@ -1,4 +1,9 @@
-from quant_tool.data.features import align_prices, log_returns, simple_returns
+from quant_tool.data.features import (
+    align_prices,
+    infer_bars_per_year,
+    log_returns,
+    simple_returns,
+)
 from quant_tool.data.ingestion import (
     fetch_ohlcv,
     generate_cointegrated_pair,
@@ -10,6 +15,7 @@ from quant_tool.data.ingestion import (
 
 __all__ = [
     "align_prices",
+    "infer_bars_per_year",
     "log_returns",
     "simple_returns",
     "fetch_ohlcv",
