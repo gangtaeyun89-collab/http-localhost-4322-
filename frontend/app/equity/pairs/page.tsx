@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { mockPairList } from "@/lib/mock";
+import { fetchPairList, type PairListResponse } from "@/lib/api";
+import { mockPairList, type PairListRow } from "@/lib/mock";
 import { cn, fmtNum, fmtPct } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -9,10 +10,38 @@ import { t } from "@/lib/i18n";
 // reference screenshots: dense numeric rows, neon-green for strong values,
 // click any row to drop into the per-pair workbench.
 
-export default function EquityPairsPage() {
+type ListResult = {
+  rows: PairListRow[];
+  n_tested: number;
+  n_universe: number;
+  source: "csv" | "synthetic" | "mock";
+};
+
+async function loadList(): Promise<ListResult> {
+  try {
+    const data: PairListResponse = await fetchPairList("equity", 50);
+    return {
+      rows: data.rows,
+      n_tested: data.n_tested,
+      n_universe: data.n_universe,
+      source: data.source,
+    };
+  } catch {
+    return {
+      rows: mockPairList,
+      n_tested: 0,
+      n_universe: 0,
+      source: "mock",
+    };
+  }
+}
+
+export default async function EquityPairsPage() {
+  const { rows, n_tested, n_universe, source } = await loadList();
+
   return (
     <AppShell market="equity">
-      <PageHeader />
+      <PageHeader source={source} nTested={n_tested} nUniverse={n_universe} />
       <div className="border-y border-border-subtle bg-bg-panel">
         <table className="w-full text-xs">
           <thead>
@@ -28,7 +57,7 @@ export default function EquityPairsPage() {
             </tr>
           </thead>
           <tbody>
-            {mockPairList.map((row) => (
+            {rows.map((row) => (
               <tr
                 key={row.id}
                 className="border-t border-border-subtle hover:bg-bg-elevated"
@@ -48,7 +77,9 @@ export default function EquityPairsPage() {
                   </Link>
                 </Td>
                 <Td>
-                  <span className="text-text-secondary">{row.industry}</span>
+                  <span className="text-text-secondary">
+                    {row.industry ?? "—"}
+                  </span>
                 </Td>
                 <Td right>
                   <span className="num">{fmtNum(row.cointPValue, 4)}</span>
@@ -70,7 +101,11 @@ export default function EquityPairsPage() {
                   <span
                     className={cn(
                       "num",
-                      row.trainSharpe > 0 ? "text-accent-green" : "text-accent-red"
+                      row.trainSharpe > 0
+                        ? "text-accent-green"
+                        : row.trainSharpe < 0
+                        ? "text-accent-red"
+                        : "text-text-muted"
                     )}
                   >
                     {fmtNum(row.trainSharpe, 2, true)}
@@ -84,28 +119,51 @@ export default function EquityPairsPage() {
                         ? "text-accent-green"
                         : row.oosSharpe > 0
                         ? "text-text-primary"
-                        : "text-accent-red"
+                        : row.oosSharpe < 0
+                        ? "text-accent-red"
+                        : "text-text-muted"
                     )}
                   >
                     {fmtNum(row.oosSharpe, 2, true)}
                   </span>
                 </Td>
                 <Td right>
-                  <ProfileBadge passed={row.oosSharpe > 0.3} />
+                  <ProfileBadge passed={row.cointPValue < 0.05} />
                 </Td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={8}
+                  className="px-3 py-12 text-center text-text-muted"
+                >
+                  공적분 페어가 없습니다. CSV 디렉토리를 확인하거나 필터를
+                  완화해 보세요.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
       <div className="px-4 py-3 text-2xs uppercase tracking-widest text-text-muted">
-        {mockPairList.length} pair(s) · sorted by OOS Sharpe · mock data
+        {rows.length} pair(s) shown · {n_tested} tested across {n_universe}{" "}
+        universe asset(s) · source:{" "}
+        <SourceTag source={source} />
       </div>
     </AppShell>
   );
 }
 
-function PageHeader() {
+function PageHeader({
+  source,
+  nTested,
+  nUniverse,
+}: {
+  source: "csv" | "synthetic" | "mock";
+  nTested: number;
+  nUniverse: number;
+}) {
   return (
     <div className="flex items-center justify-between border-b border-border-subtle bg-bg-panel px-4 py-2">
       <div className="flex items-center gap-3">
@@ -116,6 +174,8 @@ function PageHeader() {
         <span className="text-xs text-text-secondary">
           {t("section.pairList")}
         </span>
+        <span className="text-text-faint">·</span>
+        <SourceTag source={source} />
       </div>
       <div className="flex items-center gap-2">
         <button className="rounded border border-border-subtle px-3 py-1 text-2xs uppercase tracking-widest text-text-secondary hover:bg-bg-elevated">
@@ -126,6 +186,25 @@ function PageHeader() {
         </button>
       </div>
     </div>
+  );
+}
+
+function SourceTag({ source }: { source: "csv" | "synthetic" | "mock" }) {
+  const colour =
+    source === "csv"
+      ? "bg-accent-green/15 text-accent-green"
+      : source === "synthetic"
+      ? "bg-accent-purple/15 text-accent-purple"
+      : "bg-accent-yellow/15 text-accent-yellow";
+  return (
+    <span
+      className={cn(
+        "rounded px-1.5 py-0.5 text-2xs uppercase tracking-widest",
+        colour
+      )}
+    >
+      {source}
+    </span>
   );
 }
 

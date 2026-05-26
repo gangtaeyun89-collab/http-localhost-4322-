@@ -7,27 +7,44 @@ import { CorrelationChart } from "@/components/pair/CorrelationChart";
 import { CopulaChart } from "@/components/pair/CopulaChart";
 import { VECMTable } from "@/components/pair/VECMTable";
 import { ImpulseChart } from "@/components/pair/ImpulseChart";
-import { mockPairAnalysis } from "@/lib/mock";
+import { fetchPairAnalysis } from "@/lib/api";
+import { mockPairAnalysis, type PairAnalysis } from "@/lib/mock";
 import { t } from "@/lib/i18n";
 
 // Dense single-page workbench for one cointegrated pair, modelled on the
-// reference screenshots:
-//   - top: KPI strip (cointegration flags + Hurst, half-life, corr, ...)
-//   - middle 2x2: cumulative returns | spread/z-score
-//                 copula scatter      | rolling correlation
-//   - bottom: VECM lag table + ECM impulse-response
+// reference screenshots. Fetches real analytics from the FastAPI backend;
+// silently falls back to the mock fixtures when the backend is unreachable
+// so the page never breaks during development.
 
-export default function EquityPairAnalysisPage({
+async function loadAnalysis(id: string): Promise<{
+  data: PairAnalysis;
+  source: "api" | "mock";
+}> {
+  try {
+    const data = await fetchPairAnalysis(id, "equity");
+    return { data, source: "api" };
+  } catch {
+    return { data: mockPairAnalysis(id), source: "mock" };
+  }
+}
+
+export default async function EquityPairAnalysisPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const data = mockPairAnalysis(params.id);
+  const { data, source } = await loadAnalysis(params.id);
   const { kpis } = data;
 
   return (
     <AppShell market="equity">
-      <PairHeader base={kpis.base} quote={kpis.quote} />
+      <PairHeader
+        base={kpis.base}
+        quote={kpis.quote}
+        timeframe={kpis.timeframe}
+        periods={kpis.periods}
+        source={source}
+      />
       <KPIBar kpis={kpis} />
 
       <div className="grid grid-cols-1 gap-px bg-border-subtle p-px lg:grid-cols-2">
@@ -64,7 +81,19 @@ export default function EquityPairAnalysisPage({
   );
 }
 
-function PairHeader({ base, quote }: { base: string; quote: string }) {
+function PairHeader({
+  base,
+  quote,
+  timeframe,
+  periods,
+  source,
+}: {
+  base: string;
+  quote: string;
+  timeframe: string;
+  periods: number;
+  source: "api" | "mock";
+}) {
   return (
     <div className="flex items-center justify-between border-b border-border-subtle bg-bg-panel px-4 py-2">
       <div className="flex items-center gap-3">
@@ -84,10 +113,29 @@ function PairHeader({ base, quote }: { base: string; quote: string }) {
       <div className="flex items-center gap-3 text-2xs uppercase tracking-widest text-text-muted">
         <span>SMART · USD</span>
         <span className="text-text-faint">|</span>
-        <span>365 periods</span>
+        <span>
+          <span className="num">{periods}</span> periods
+        </span>
         <span className="text-text-faint">|</span>
-        <span>Daily</span>
+        <span>{timeframe}</span>
+        <span className="text-text-faint">|</span>
+        <SourceBadge source={source} />
       </div>
     </div>
+  );
+}
+
+function SourceBadge({ source }: { source: "api" | "mock" }) {
+  if (source === "api") {
+    return (
+      <span className="rounded bg-accent-green/15 px-1.5 py-0.5 text-accent-green">
+        live
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-accent-yellow/15 px-1.5 py-0.5 text-accent-yellow">
+      mock
+    </span>
   );
 }

@@ -1,0 +1,5 @@
+# Backend-specific deps. The quant_tool requirements (numpy, pandas,
+# statsmodels, ...) are picked up from the repo-level requirements.txt.
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
