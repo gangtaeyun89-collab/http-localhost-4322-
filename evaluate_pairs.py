@@ -79,12 +79,21 @@ def _eval_one(
         log.warning("walk-forward failed for %s/%s: %s", base_name, quote_name, exc)
         return None
     s = wf.stats
+    # Per-window train Sharpe is computed honestly (only on the train window
+    # that *precedes* its OOS test window), so its mean is forward-only and
+    # safe to filter portfolios on -- unlike OOS Sharpe, which would be
+    # look-ahead cherry-picking.
+    n_windows = max(1, len(wf.windows))
+    mean_train_sharpe = sum(w.train_sharpe for w in wf.windows) / n_windows
+    mean_test_sharpe = sum(w.test_sharpe for w in wf.windows) / n_windows
     return {
         "base": base_name,
         "quote": quote_name,
         "pvalue": float("nan"),  # filled by caller
         "half_life": half_life,
         "lookback": cfg.signal.zscore_lookback,
+        "train_sharpe": mean_train_sharpe,
+        "test_sharpe": mean_test_sharpe,
         "oos_sharpe": s["sharpe"],
         "oos_cagr": s["cagr"],
         "oos_mdd": s["max_drawdown"],
@@ -124,13 +133,21 @@ def main() -> None:
     parser.add_argument(
         "--portfolio",
         action="store_true",
-        help="run a fractional-Kelly portfolio backtest over OOS survivors",
+        help="run a fractional-Kelly portfolio backtest over survivor pairs",
+    )
+    parser.add_argument(
+        "--portfolio-filter",
+        choices=["oos", "train", "none"],
+        default="train",
+        help="how to pick portfolio pairs: 'train' (mean walk-forward train "
+        "Sharpe > threshold, forward-only/honest), 'oos' (mean OOS Sharpe > "
+        "threshold, look-ahead -- exploratory only), 'none' (keep all)",
     )
     parser.add_argument(
         "--portfolio-sharpe-threshold",
         type=float,
         default=0.0,
-        help="minimum OOS Sharpe a pair needs to enter the portfolio",
+        help="Sharpe threshold for the chosen --portfolio-filter (default: 0)",
     )
     parser.add_argument(
         "--save",
@@ -234,6 +251,8 @@ def main() -> None:
         "pvalue",
         "half_life",
         "lookback",
+        "train_sharpe",
+        "test_sharpe",
         "oos_sharpe",
         "oos_cagr",
         "oos_mdd",
@@ -263,18 +282,25 @@ def main() -> None:
 
     # --- 3. Optional portfolio backtest of survivors --------------------------
     if args.portfolio:
-        survivors = df[df["oos_sharpe"] > args.portfolio_sharpe_threshold]
+        if args.portfolio_filter == "none":
+            survivors = df
+            filter_desc = "all pairs"
+        elif args.portfolio_filter == "oos":
+            survivors = df[df["oos_sharpe"] > args.portfolio_sharpe_threshold]
+            filter_desc = f"OOS Sharpe > {args.portfolio_sharpe_threshold} (LOOK-AHEAD)"
+        else:  # "train" -- honest forward-only filter
+            survivors = df[df["train_sharpe"] > args.portfolio_sharpe_threshold]
+            filter_desc = f"train Sharpe > {args.portfolio_sharpe_threshold}"
+        log.info(
+            "Portfolio filter '%s' -> %d / %d pair(s)",
+            filter_desc,
+            len(survivors),
+            len(df),
+        )
         if len(survivors) < 2:
-            log.info(
-                "only %d pair survives OOS Sharpe>%.2f -- skipping portfolio",
-                len(survivors),
-                args.portfolio_sharpe_threshold,
-            )
+            log.info("too few pairs survive -- skipping portfolio")
             return
         pairs = [(row["base"], row["quote"]) for _, row in survivors.iterrows()]
-        log.info(
-            "Portfolio backtest over %d OOS-positive pair(s) ...", len(pairs)
-        )
         pf = portfolio_backtest(
             universe,
             pairs,
@@ -284,8 +310,42 @@ def main() -> None:
             kelly_fraction=0.25,
         )
         print("\n" + "=" * 48)
+        print(f"Portfolio filter: {filter_desc}")
+        print(f"Pairs picked:     {len(pairs)} / {len(df)}")
+        print("-" * 48)
         print(pf.describe())
         print("=" * 48)
+
+        # Effective N from the pair return correlation matrix. A book of N
+        # pairs whose returns are pairwise correlated rho has an effective N
+        # of N / (1 + (N-1) rho). When rho is high (REITs, all rate-driven)
+        # the diversification benefit collapses -- knowing this number
+        # explains why portfolio Sharpe often falls short of the per-pair
+        # average.
+        try:
+            from quant_tool.backtest.engine import run_backtest
+
+            per_pair_rets = {}
+            for base, quote in pairs:
+                bt = run_backtest(
+                    align_prices(universe[base], universe[quote]), base_config
+                )
+                per_pair_rets[f"{base}/{quote}"] = bt.bars["net_return"]
+            ret_df = pd.concat(per_pair_rets, axis=1).dropna()
+            corr = ret_df.corr()
+            n = len(corr)
+            mean_rho = (corr.values.sum() - n) / (n * (n - 1))
+            eff_n = n / (1 + (n - 1) * mean_rho) if mean_rho > -1 / (n - 1) else n
+            print(
+                f"\nPair-return correlation diagnostic:\n"
+                f"  Pairs N           {n}\n"
+                f"  Mean pairwise rho {mean_rho:+.3f}\n"
+                f"  Effective N       {eff_n:.1f}  (N / (1 + (N-1) rho))\n"
+                f"  -> portfolio Sharpe ceiling ~ mean per-pair Sharpe "
+                f"x sqrt({eff_n:.1f}/N) = x {(eff_n / n) ** 0.5:.2f}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("correlation diagnostic skipped: %s", exc)
 
 
 if __name__ == "__main__":
