@@ -230,3 +230,52 @@ export async function fetchSectors(): Promise<SectorsResponse> {
 export async function fetchSectorDetail(id: string): Promise<SectorDetail> {
   return getJSON<SectorDetail>(`/api/sectors/${encodeURIComponent(id)}`);
 }
+
+// ---------------------------------------------------------------------------
+// Discovery
+// ---------------------------------------------------------------------------
+
+export type DiscoverRequest = {
+  baskets: string[];
+  fdr_level: number;
+  distance_threshold: number;
+  min_half_life: number;
+  max_half_life: number;
+};
+
+export type DiscoveredPair = {
+  id: string;
+  base: string;
+  quote: string;
+  cointPValue: number;
+  adfStatistic: number;
+  halfLife: number;
+  corr: number;
+  basket: string | null;
+  basketLabel: string | null;
+};
+
+export type DiscoverResult = {
+  pairs: DiscoveredPair[];
+  n_clusters: number;
+  n_tested: number;
+  n_universe: number;
+  source: "csv" | "synthetic";
+  baskets: { id: string; label: string }[];
+};
+
+export async function postDiscoverBrowser(
+  req: DiscoverRequest
+): Promise<DiscoverResult> {
+  const res = await fetch("/api/discover", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`discover -> ${res.status}: ${detail}`);
+  }
+  return (await res.json()) as DiscoverResult;
+}

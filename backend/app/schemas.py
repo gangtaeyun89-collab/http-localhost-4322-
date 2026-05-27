@@ -228,6 +228,48 @@ class SectorDetail(BaseModel):
     source: str
 
 
+# ---------------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------------
+
+
+class DiscoverRequest(BaseModel):
+    """Inputs to POST /api/discover. baskets is a list of sector ids
+    (see /api/sectors). FDR controls Benjamini-Hochberg severity."""
+
+    baskets: list[str]
+    fdr_level: float = 0.10
+    distance_threshold: float = 0.7
+    min_half_life: float = 5.0
+    max_half_life: float = 200.0
+
+
+class DiscoveredPair(BaseModel):
+    id: str
+    base: str
+    quote: str
+    cointPValue: float
+    adfStatistic: float
+    halfLife: float
+    corr: float
+    basket: str | None = None
+    basketLabel: str | None = None
+
+
+class DiscoverBasketRef(BaseModel):
+    id: str
+    label: str
+
+
+class DiscoverResult(BaseModel):
+    pairs: list[DiscoveredPair]
+    n_clusters: int
+    n_tested: int
+    n_universe: int
+    source: str
+    baskets: list[DiscoverBasketRef]
+
+
 class UniverseInfo(BaseModel):
     name: str
     label: str
