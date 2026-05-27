@@ -3,6 +3,7 @@ import { KPIBar } from "@/components/pair/KPIBar";
 import { LivePulse } from "@/components/pair/LivePulse";
 import { Panel } from "@/components/pair/Panel";
 import { CumReturnsChart } from "@/components/pair/CumReturnsChart";
+import { LiveZScoreChart } from "@/components/pair/LiveZScoreChart";
 import { ZScoreChart } from "@/components/pair/ZScoreChart";
 import { CorrelationChart } from "@/components/pair/CorrelationChart";
 import { CopulaChart } from "@/components/pair/CopulaChart";
@@ -60,8 +61,12 @@ export default async function EquityPairAnalysisPage({
             quote={kpis.quote}
           />
         </Panel>
-        <Panel title={t("section.spreadZscore")} hint="rolling · static">
-          <ZScoreChart data={data.zscore} />
+        <Panel title={t("section.spreadZscore")} hint="rolling · live tick">
+          {source === "api" ? (
+            <LiveZScoreChart data={data.zscore} pairId={params.id} />
+          ) : (
+            <ZScoreChart data={data.zscore} />
+          )}
         </Panel>
         <Panel title={t("section.copula")} hint="prices · 5% boundary">
           <CopulaChart data={data.scatter} />

@@ -1,11 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchPairQuotesBrowser,
   type PairQuote,
 } from "@/lib/api";
+import {
+  alertSeverity,
+  ensureNotificationPermission,
+  notifyBrowser,
+  playTone,
+  pushHistory,
+  shouldFire,
+  type AlertEvent,
+} from "@/lib/alerts";
 import type { PairListRow } from "@/lib/mock";
 import { cn, fmtNum, fmtPct } from "@/lib/utils";
 
@@ -33,15 +42,25 @@ const SIGNAL_COLOUR: Record<PairQuote["signal"], string> = {
 export function PairsWatchTable({
   seedRows,
   interval = 5000,
+  alertsEnabled = true,
 }: {
   seedRows: PairListRow[];
   interval?: number;
+  alertsEnabled?: boolean;
 }) {
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const [lastTick, setLastTick] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Previous absolute z-scores per pair -- the alert fires when |z| crosses
+  // a threshold upward, not on every tick where it happens to be high.
+  const prevAbsZ = useRef<Record<string, number>>({});
+
   const ids = useMemo(() => seedRows.map((r) => r.id), [seedRows]);
+
+  useEffect(() => {
+    if (alertsEnabled) void ensureNotificationPermission();
+  }, [alertsEnabled]);
 
   useEffect(() => {
     if (ids.length === 0) return;
@@ -55,6 +74,36 @@ export function PairsWatchTable({
         bulk.quotes.forEach((q) => {
           map[`${q.base}-${q.quote}`] = q;
         });
+
+        // Threshold-crossing alert pipeline. Only fires on the upward
+        // edge -- |z| moving from below the band into it -- so a pair
+        // that lingers above 2.0 doesn't beep every poll.
+        if (alertsEnabled) {
+          for (const q of bulk.quotes) {
+            if (q.source === "error") continue;
+            const id = `${q.base}-${q.quote}`;
+            const cur = Math.abs(q.lastZScore);
+            const prev = prevAbsZ.current[id] ?? 0;
+            const sev = alertSeverity(cur);
+            if (sev && cur > prev && shouldFire(id, sev)) {
+              const evt: AlertEvent = {
+                id,
+                base: q.base,
+                quote: q.quote,
+                zscore: q.lastZScore,
+                signal:
+                  q.lastZScore >= 0 ? "short_spread" : "long_spread",
+                severity: sev,
+                ts: Date.now(),
+              };
+              pushHistory(evt);
+              notifyBrowser(evt);
+              playTone(sev);
+            }
+            prevAbsZ.current[id] = cur;
+          }
+        }
+
         setQuotes(map);
         setLastTick(bulk.asOf);
         setError(null);
@@ -70,7 +119,7 @@ export function PairsWatchTable({
       cancelled = true;
       clearInterval(id);
     };
-  }, [ids, interval]);
+  }, [ids, interval, alertsEnabled]);
 
   // Rows enriched with their latest quote, sorted by |z| so the action is
   // at the top of the page.

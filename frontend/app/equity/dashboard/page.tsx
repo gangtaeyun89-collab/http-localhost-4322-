@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { AlertHistory } from "@/components/dashboard/AlertHistory";
 import { PairsWatchTable } from "@/components/dashboard/PairsWatchTable";
 import { fetchPairList } from "@/lib/api";
 import { mockPairList, type PairListRow } from "@/lib/mock";
@@ -30,7 +31,12 @@ export default async function EquityDashboardPage() {
       {rows.length === 0 ? (
         <EmptyState />
       ) : (
-        <PairsWatchTable seedRows={rows} interval={5000} />
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px]">
+          <PairsWatchTable seedRows={rows} interval={5000} />
+          <div className="hidden xl:block">
+            <AlertHistory />
+          </div>
+        </div>
       )}
     </AppShell>
   );
