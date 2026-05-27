@@ -8,6 +8,8 @@ from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Query
 
+from datetime import datetime, timezone
+
 from backend.app.config import settings
 from backend.app.schemas import (
     Market,
@@ -16,10 +18,11 @@ from backend.app.schemas import (
     PairListResponse,
     PairListRow,
     PairQuote,
+    PairQuoteBulk,
 )
 from backend.app.services import analysis
 from backend.app.services.data_source import load_universe, universe_source
-from backend.app.services.quote_service import get_quote
+from backend.app.services.quote_service import get_quote, get_quotes
 from quant_tool.strategy.pair_finder import cointegration_test
 
 
@@ -139,17 +142,41 @@ def analyse_pair(pair_id: str, market: Market = "equity") -> PairAnalysis:
     )
 
 
+@router.get("/quotes", response_model=PairQuoteBulk)
+def quote_pairs_bulk(ids: str = Query(..., description="comma-separated pair ids")) -> PairQuoteBulk:
+    """Bulk quote endpoint for the dashboard.
+
+    Accepts ``ids=BASE1-QUOTE1,BASE2-QUOTE2,...`` and returns one PairQuote
+    per id in the same order. Individual failures are surfaced inline as
+    ``source: "error"`` rather than aborting the whole batch so one bad
+    ticker doesn't blank the dashboard.
+    """
+    pair_ids = [pid.strip() for pid in ids.split(",") if pid.strip()]
+    if not pair_ids:
+        raise HTTPException(400, "ids query parameter is required")
+    pairs = []
+    for pid in pair_ids:
+        if "-" not in pid:
+            raise HTTPException(400, f"bad pair id {pid!r}")
+        base, quote = pid.split("-", 1)
+        pairs.append((base.strip(), quote.strip()))
+    quotes = [PairQuote(**q) for q in get_quotes(pairs)]
+    return PairQuoteBulk(
+        quotes=quotes,
+        asOf=datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
+    )
+
+
 @router.get("/{pair_id}/quote", response_model=PairQuote)
-def quote_pair(pair_id: str, live: bool = False) -> PairQuote:
+def quote_pair(pair_id: str) -> PairQuote:
     """Lightweight tick endpoint -- safe to poll on a 1-5s cadence.
 
-    ``live=true`` forces an IBKR refresh attempt even when the env flag is
-    off; the service silently falls back to CSV when the gateway is
-    unreachable so the page never blocks on an offline broker.
+    Backed by the cached CSV universe; refresh externally via
+    ``scripts/refresh_data.sh`` (cron / launchd).
     """
     base, quote = _parse_pair_id(pair_id)
     try:
-        payload = get_quote(base, quote, force_ibkr=live)
+        payload = get_quote(base, quote)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     return PairQuote(**payload)

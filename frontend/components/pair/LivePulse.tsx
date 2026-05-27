@@ -26,11 +26,9 @@ const SIGNAL_COLOUR: Record<PairQuote["signal"], string> = {
 export function LivePulse({
   pairId,
   interval = 5000,
-  live = false,
 }: {
   pairId: string;
   interval?: number;
-  live?: boolean;
 }) {
   const [quote, setQuote] = useState<PairQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +39,7 @@ export function LivePulse({
 
     async function poll() {
       try {
-        const q = await fetchPairQuoteBrowser(pairId, live);
+        const q = await fetchPairQuoteBrowser(pairId);
         if (cancelled) return;
         setQuote(q);
         setError(null);
@@ -60,7 +58,7 @@ export function LivePulse({
       cancelled = true;
       clearInterval(id);
     };
-  }, [pairId, interval, live]);
+  }, [pairId, interval]);
 
   if (error && !quote) {
     return (
@@ -93,11 +91,11 @@ export function LivePulse({
       <div className="flex items-center gap-1.5">
         <Dot
           colour={
-            quote.source === "ibkr"
-              ? "bg-accent-green"
-              : quote.source === "csv"
+            quote.source === "csv"
               ? "bg-accent-cyan"
-              : "bg-accent-yellow"
+              : quote.source === "synthetic"
+              ? "bg-accent-yellow"
+              : "bg-accent-red"
           }
           pulsing={pulse}
         />

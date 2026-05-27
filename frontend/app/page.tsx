@@ -29,7 +29,7 @@ export default function HomePage() {
 
         <div className="mt-12 grid gap-4 md:grid-cols-2">
           <MarketCard
-            href="/equity/pairs"
+            href="/equity/dashboard"
             accent="cyan"
             icon={<TrendingUp className="h-5 w-5" />}
             title={t("nav.equity")}

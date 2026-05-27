@@ -120,7 +120,12 @@ class PairQuote(BaseModel):
     halfLife: float
     pvalue: float
     signal: str  # "flat" | "long_spread" | "short_spread"
-    source: str  # "ibkr" | "csv" | "synthetic"
+    source: str  # "csv" | "synthetic" | "error"
+
+
+class PairQuoteBulk(BaseModel):
+    quotes: list[PairQuote]
+    asOf: str
 
 
 class UniverseInfo(BaseModel):

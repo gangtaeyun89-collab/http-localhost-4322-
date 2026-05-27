@@ -78,22 +78,34 @@ export type PairQuote = {
   halfLife: number;
   pvalue: number;
   signal: "flat" | "long_spread" | "short_spread";
-  source: "ibkr" | "csv" | "synthetic";
+  source: "csv" | "synthetic" | "error";
 };
 
 // Browser-side fetch -- hits the rewrites() proxy at /api/* so we never
 // expose the FastAPI origin to the client. Server-side callers should go
 // through fetchPairAnalysis instead.
-export async function fetchPairQuoteBrowser(
-  id: string,
-  live = false
-): Promise<PairQuote> {
-  const url = `/api/pairs/${encodeURIComponent(id)}/quote${
-    live ? "?live=true" : ""
-  }`;
+export async function fetchPairQuoteBrowser(id: string): Promise<PairQuote> {
+  const url = `/api/pairs/${encodeURIComponent(id)}/quote`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`${url} -> ${res.status}`);
   }
   return (await res.json()) as PairQuote;
+}
+
+export type PairQuoteBulk = {
+  quotes: PairQuote[];
+  asOf: string;
+};
+
+export async function fetchPairQuotesBrowser(
+  ids: string[]
+): Promise<PairQuoteBulk> {
+  if (ids.length === 0) return { quotes: [], asOf: "" };
+  const url = `/api/pairs/quotes?ids=${encodeURIComponent(ids.join(","))}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`${url} -> ${res.status}`);
+  }
+  return (await res.json()) as PairQuoteBulk;
 }
