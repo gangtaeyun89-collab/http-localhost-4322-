@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { KPIBar } from "@/components/pair/KPIBar";
+import { LivePulse } from "@/components/pair/LivePulse";
 import { Panel } from "@/components/pair/Panel";
 import { CumReturnsChart } from "@/components/pair/CumReturnsChart";
 import { ZScoreChart } from "@/components/pair/ZScoreChart";
@@ -44,6 +45,7 @@ export default async function EquityPairAnalysisPage({
         timeframe={kpis.timeframe}
         periods={kpis.periods}
         source={source}
+        pairId={params.id}
       />
       <KPIBar kpis={kpis} />
 
@@ -87,15 +89,17 @@ function PairHeader({
   timeframe,
   periods,
   source,
+  pairId,
 }: {
   base: string;
   quote: string;
   timeframe: string;
   periods: number;
   source: "api" | "mock";
+  pairId: string;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-border-subtle bg-bg-panel px-4 py-2">
+    <div className="flex flex-col gap-2 border-b border-border-subtle bg-bg-panel px-4 py-2 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex items-center gap-3">
         <div className="text-xs uppercase tracking-widest text-text-muted">
           pair
@@ -109,17 +113,23 @@ function PairHeader({
             {quote}
           </span>
         </div>
-      </div>
-      <div className="flex items-center gap-3 text-2xs uppercase tracking-widest text-text-muted">
-        <span>SMART · USD</span>
         <span className="text-text-faint">|</span>
-        <span>
+        <span className="text-2xs uppercase tracking-widest text-text-muted">
+          SMART · USD
+        </span>
+        <span className="text-text-faint">|</span>
+        <span className="text-2xs uppercase tracking-widest text-text-muted">
           <span className="num">{periods}</span> periods
         </span>
         <span className="text-text-faint">|</span>
-        <span>{timeframe}</span>
+        <span className="text-2xs uppercase tracking-widest text-text-muted">
+          {timeframe}
+        </span>
         <span className="text-text-faint">|</span>
         <SourceBadge source={source} />
+      </div>
+      <div className="flex items-center">
+        {source === "api" && <LivePulse pairId={pairId} interval={5000} />}
       </div>
     </div>
   );

@@ -66,3 +66,34 @@ export type HealthResponse = {
 export async function fetchHealth(): Promise<HealthResponse> {
   return getJSON<HealthResponse>("/api/health");
 }
+
+export type PairQuote = {
+  base: string;
+  quote: string;
+  asOf: string;
+  lastBar: { t: string; base: number; quote: number };
+  lastZScore: number;
+  lastSpread: number;
+  lastReturn: { base: number; quote: number };
+  halfLife: number;
+  pvalue: number;
+  signal: "flat" | "long_spread" | "short_spread";
+  source: "ibkr" | "csv" | "synthetic";
+};
+
+// Browser-side fetch -- hits the rewrites() proxy at /api/* so we never
+// expose the FastAPI origin to the client. Server-side callers should go
+// through fetchPairAnalysis instead.
+export async function fetchPairQuoteBrowser(
+  id: string,
+  live = false
+): Promise<PairQuote> {
+  const url = `/api/pairs/${encodeURIComponent(id)}/quote${
+    live ? "?live=true" : ""
+  }`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`${url} -> ${res.status}`);
+  }
+  return (await res.json()) as PairQuote;
+}

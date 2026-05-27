@@ -96,6 +96,33 @@ class PairListResponse(BaseModel):
     source: str  # "csv" | "synthetic"
 
 
+class QuoteBar(BaseModel):
+    t: str
+    base: float
+    quote: float
+
+
+class QuoteReturn(BaseModel):
+    base: float
+    quote: float
+
+
+class PairQuote(BaseModel):
+    """Lightweight per-pair tick payload for the polling endpoint."""
+
+    base: str
+    quote: str
+    asOf: str
+    lastBar: QuoteBar
+    lastZScore: float
+    lastSpread: float
+    lastReturn: QuoteReturn
+    halfLife: float
+    pvalue: float
+    signal: str  # "flat" | "long_spread" | "short_spread"
+    source: str  # "ibkr" | "csv" | "synthetic"
+
+
 class UniverseInfo(BaseModel):
     name: str
     label: str

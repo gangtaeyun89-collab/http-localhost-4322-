@@ -15,9 +15,11 @@ from backend.app.schemas import (
     PairKPIs,
     PairListResponse,
     PairListRow,
+    PairQuote,
 )
 from backend.app.services import analysis
 from backend.app.services.data_source import load_universe, universe_source
+from backend.app.services.quote_service import get_quote
 from quant_tool.strategy.pair_finder import cointegration_test
 
 
@@ -135,3 +137,19 @@ def analyse_pair(pair_id: str, market: Market = "equity") -> PairAnalysis:
         ),
         impulse=analysis.impulse_response(basics.half_life),
     )
+
+
+@router.get("/{pair_id}/quote", response_model=PairQuote)
+def quote_pair(pair_id: str, live: bool = False) -> PairQuote:
+    """Lightweight tick endpoint -- safe to poll on a 1-5s cadence.
+
+    ``live=true`` forces an IBKR refresh attempt even when the env flag is
+    off; the service silently falls back to CSV when the gateway is
+    unreachable so the page never blocks on an offline broker.
+    """
+    base, quote = _parse_pair_id(pair_id)
+    try:
+        payload = get_quote(base, quote, force_ibkr=live)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return PairQuote(**payload)
