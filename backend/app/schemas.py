@@ -8,7 +8,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-
 Market = Literal["equity", "crypto"]
 
 
@@ -126,6 +125,68 @@ class PairQuote(BaseModel):
 class PairQuoteBulk(BaseModel):
     quotes: list[PairQuote]
     asOf: str
+
+
+# ---------------------------------------------------------------------------
+# Backtest
+# ---------------------------------------------------------------------------
+
+
+class BacktestRequest(BaseModel):
+    """Inputs to /api/backtest. Matches what the React form posts."""
+
+    base: str
+    quote: str
+    train_size: int = 800
+    test_size: int = 200
+    asset_class: Literal["equity", "crypto"] = "equity"
+    target_volatility: float = 0.15
+    tune_lookback: bool = True
+    hedge_method: Literal["kalman", "ols"] = "kalman"
+    entry_z: float = 2.0
+    exit_z: float = 0.5
+
+
+class WindowReport(BaseModel):
+    train_start: str
+    train_end: str
+    test_start: str
+    test_end: str
+    train_sharpe: float
+    test_sharpe: float
+
+
+class EquityPoint(BaseModel):
+    t: str
+    equity: float
+    netReturn: float
+    position: float
+
+
+class BacktestStats(BaseModel):
+    sharpe: float
+    cagr: float
+    maxDrawdown: float
+    totalReturn: float
+    annualVolatility: float
+    winRate: float
+    nTrades: int
+    bars: int
+
+
+class BacktestResult(BaseModel):
+    request: BacktestRequest
+    stats: BacktestStats
+    equity: list[EquityPoint]
+    windows: list[WindowReport]
+    meanTrainSharpe: float
+    meanTestSharpe: float
+    overfitGap: float  # train - test; positive + large = likely overfit
+    halfLife: float
+    pvalue: float
+    lookbackUsed: int
+    barsPerYear: int
+    source: str  # "csv" | "synthetic"
 
 
 class UniverseInfo(BaseModel):

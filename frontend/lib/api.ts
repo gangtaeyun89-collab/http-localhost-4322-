@@ -109,3 +109,78 @@ export async function fetchPairQuotesBrowser(
   }
   return (await res.json()) as PairQuoteBulk;
 }
+
+// ---------------------------------------------------------------------------
+// Backtest
+// ---------------------------------------------------------------------------
+
+export type BacktestRequest = {
+  base: string;
+  quote: string;
+  train_size: number;
+  test_size: number;
+  asset_class: "equity" | "crypto";
+  target_volatility: number;
+  tune_lookback: boolean;
+  hedge_method: "kalman" | "ols";
+  entry_z: number;
+  exit_z: number;
+};
+
+export type WindowReport = {
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  train_sharpe: number;
+  test_sharpe: number;
+};
+
+export type EquityPoint = {
+  t: string;
+  equity: number;
+  netReturn: number;
+  position: number;
+};
+
+export type BacktestStats = {
+  sharpe: number;
+  cagr: number;
+  maxDrawdown: number;
+  totalReturn: number;
+  annualVolatility: number;
+  winRate: number;
+  nTrades: number;
+  bars: number;
+};
+
+export type BacktestResult = {
+  request: BacktestRequest;
+  stats: BacktestStats;
+  equity: EquityPoint[];
+  windows: WindowReport[];
+  meanTrainSharpe: number;
+  meanTestSharpe: number;
+  overfitGap: number;
+  halfLife: number;
+  pvalue: number;
+  lookbackUsed: number;
+  barsPerYear: number;
+  source: "csv" | "synthetic";
+};
+
+export async function postBacktestBrowser(
+  req: BacktestRequest
+): Promise<BacktestResult> {
+  const res = await fetch("/api/backtest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`backtest -> ${res.status}: ${detail}`);
+  }
+  return (await res.json()) as BacktestResult;
+}
