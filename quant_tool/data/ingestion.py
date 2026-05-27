@@ -129,6 +129,42 @@ def load_pair(
     return align_prices(base, quote)
 
 
+def load_universe_from_dir(
+    directory: str | Path,
+    pattern: str = "*.csv",
+    timestamp_col: str = "timestamp",
+    min_bars: int = 0,
+) -> pd.DataFrame:
+    """Load every OHLCV file in ``directory`` into a universe price frame.
+
+    Each file becomes one column of close prices, named after the file stem
+    (so ``XLF.csv`` -> column ``XLF``). The columns are inner-joined on the
+    shared timestamp index so every asset has a price at every retained
+    timestamp -- the shape :func:`quant_tool.strategy.discovery.discover_pairs`
+    expects.
+
+    ``min_bars`` drops files shorter than the threshold *before* alignment, so
+    one short series does not throw away history for the rest of the universe.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise ValueError(f"{directory} is not a directory")
+
+    series: dict[str, pd.Series] = {}
+    for path in sorted(directory.glob(pattern)):
+        df = load_ohlcv(path, timestamp_col=timestamp_col)
+        if len(df) < min_bars:
+            continue
+        series[path.stem] = df["close"]
+
+    if not series:
+        raise ValueError(
+            f"no OHLCV files matching {pattern!r} found in {directory}"
+        )
+
+    return pd.concat(series, axis=1).dropna()
+
+
 def generate_cointegrated_pair(
     n: int = 2000,
     beta: float = 0.8,
