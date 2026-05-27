@@ -21,6 +21,7 @@ import { positionPnl, type Position } from "@/lib/positions";
 
 const CONFIG_KEY = "statarb.risk.config.v1";
 const KILL_KEY = "statarb.risk.kill.v1";
+const PEAK_KEY = "statarb.nav.peak.v1";
 
 export type RiskConfig = {
   capital: number; // total paper capital
@@ -102,6 +103,81 @@ export function resetKillSwitch() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(KILL_KEY);
+    window.dispatchEvent(new CustomEvent("statarb.risk.update"));
+  } catch {
+    // ignore
+  }
+}
+
+// -- Peak NAV (persisted) ---------------------------------------------------
+//
+// The drawdown-from-peak measurement is what triggers the kill switch, so
+// "what was the high-water mark?" must survive page reloads. We persist
+// it under PEAK_KEY and treat capital as a floor: a user can't be in
+// drawdown until NAV drops below their starting capital.
+//
+// After a kill switch reset the caller typically resets the peak too,
+// pinning it to the current NAV so the user gets a fresh window in which
+// to recover.
+
+export type PeakNavState = {
+  peak: number;
+  updatedAt: number;
+};
+
+function readPeakRaw(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = window.localStorage.getItem(PEAK_KEY);
+    if (!raw) return 0;
+    const state = JSON.parse(raw) as PeakNavState;
+    return Number.isFinite(state.peak) ? state.peak : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePeak(peak: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const state: PeakNavState = { peak, updatedAt: Date.now() };
+    window.localStorage.setItem(PEAK_KEY, JSON.stringify(state));
+    window.dispatchEvent(new CustomEvent("statarb.risk.update"));
+  } catch {
+    // ignore
+  }
+}
+
+/** Effective peak NAV: max of the stored value, the current NAV, and the
+ * configured capital. Updates the stored value whenever it lifts, so the
+ * persistent record only ever ratchets upward. */
+export function effectivePeakNav(currentNav: number, capital: number): number {
+  const stored = readPeakRaw();
+  const peak = Math.max(stored, capital, currentNav);
+  if (peak > stored) writePeak(peak);
+  return peak;
+}
+
+/** Read the stored peak without mutating it. Used by the risk panel for
+ * "peak NAV: $X" display. */
+export function getPeakNav(fallback: number = 0): number {
+  const raw = readPeakRaw();
+  return raw > 0 ? raw : fallback;
+}
+
+/** Force-set the peak to a specific value, typically the current NAV at
+ * kill-switch reset. */
+export function setPeakNav(peak: number) {
+  if (!Number.isFinite(peak)) return;
+  writePeak(peak);
+}
+
+/** Clear the stored peak. Capital becomes the floor again until NAV
+ * rises above it. */
+export function resetPeakNav() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(PEAK_KEY);
     window.dispatchEvent(new CustomEvent("statarb.risk.update"));
   } catch {
     // ignore

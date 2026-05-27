@@ -10,8 +10,11 @@ import {
   dailyRealised,
   DEFAULT_RISK,
   getKillSwitchState,
+  getPeakNav,
   getRiskConfig,
   resetKillSwitch,
+  resetPeakNav,
+  setPeakNav,
   setRiskConfig,
   unrealisedFraction,
   type RiskConfig,
@@ -52,7 +55,10 @@ export function RiskPanel({
   const realisedAll = cumulativeRealised(positions, config);
   const unrealised = unrealisedFraction(open, quotes, config);
   const nav = currentNav(positions, quotes, config);
-  const drawdown = nav / config.capital - 1; // negative when underwater vs starting capital
+  // Persistent peak: survives reloads, used for the drawdown calculation.
+  const peak = getPeakNav(config.capital);
+  const drawdownVsCap = nav / config.capital - 1; // since starting capital
+  const drawdownFromPeak = peak > 0 ? nav / peak - 1 : 0;
 
   // Limit utilisation ratios -- values in [0, 1] feed the progress bars.
   const dailyUtil = Math.min(
@@ -61,7 +67,9 @@ export function RiskPanel({
   );
   const totalUtil = Math.min(
     1,
-    drawdown < 0 ? -drawdown / config.maxDrawdownTotal : 0
+    drawdownFromPeak < 0
+      ? -drawdownFromPeak / config.maxDrawdownTotal
+      : 0
   );
 
   return (
@@ -79,12 +87,26 @@ export function RiskPanel({
             <span
               className={cn(
                 "num font-semibold",
-                drawdown >= 0 ? "text-accent-green" : "text-accent-red"
+                drawdownVsCap >= 0 ? "text-accent-green" : "text-accent-red"
               )}
             >
               ${nav.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>{" "}
-            ({fmtPct(drawdown, 2, true)})
+            ({fmtPct(drawdownVsCap, 2, true)})
+          </span>
+          <span>
+            peak{" "}
+            <span className="num text-text-secondary">
+              ${peak.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>{" "}
+            <span
+              className={cn(
+                "num text-2xs",
+                drawdownFromPeak < 0 ? "text-accent-red" : "text-text-faint"
+              )}
+            >
+              ({fmtPct(drawdownFromPeak, 2, true)})
+            </span>
           </span>
           <span>
             realised{" "}
@@ -137,11 +159,11 @@ export function RiskPanel({
           trippedNote="신규 진입 정지"
         />
         <LimitBar
-          label={`전체 drawdown (${(config.maxDrawdownTotal * 100).toFixed(1)}%)`}
+          label={`전체 drawdown (${(config.maxDrawdownTotal * 100).toFixed(1)}%, peak 기준)`}
           util={totalUtil}
-          current={drawdown}
+          current={drawdownFromPeak}
           limit={config.maxDrawdownTotal}
-          tripped={drawdown <= -config.maxDrawdownTotal}
+          tripped={drawdownFromPeak <= -config.maxDrawdownTotal}
           trippedNote="KILL SWITCH"
         />
       </div>
@@ -169,11 +191,16 @@ export function RiskPanel({
             </div>
           </div>
           <button
-            onClick={resetKillSwitch}
+            onClick={() => {
+              // Reset both the kill flag and the peak so the user gets a
+              // fresh drawdown window starting from the current NAV.
+              resetKillSwitch();
+              setPeakNav(nav);
+            }}
             className="flex items-center gap-1 rounded border border-accent-yellow/40 bg-accent-yellow/10 px-2 py-1 text-2xs uppercase tracking-widest text-accent-yellow hover:bg-accent-yellow/20"
           >
             <RefreshCcw className="h-3 w-3" />
-            reset
+            reset (peak도 갱신)
           </button>
         </div>
       )}
@@ -293,6 +320,19 @@ function Editor({
         className="rounded border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1.5 text-2xs uppercase tracking-widest text-accent-cyan hover:bg-accent-cyan/20"
       >
         적용
+      </button>
+      <button
+        onClick={() => {
+          if (
+            typeof window !== "undefined" &&
+            !window.confirm("peak NAV을 capital로 초기화할까요?")
+          )
+            return;
+          resetPeakNav();
+        }}
+        className="rounded border border-border-subtle px-3 py-1.5 text-2xs uppercase tracking-widest text-text-secondary hover:bg-bg-elevated"
+      >
+        peak NAV 리셋
       </button>
     </div>
   );

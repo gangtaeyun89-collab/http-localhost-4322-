@@ -20,6 +20,7 @@ import {
 import {
   cumulativeRealised,
   currentNav,
+  effectivePeakNav,
   getKillSwitchState,
   getRiskConfig,
   pairsBreachingStop,
@@ -46,7 +47,6 @@ export function PositionsTable({
   const [lastPoll, setLastPoll] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const closingRef = useRef<Set<string>>(new Set());
-  const peakNavRef = useRef<number>(0);
 
   // Mirror localStorage into React state. Updates from this tab fire a
   // custom event; updates from other tabs fire 'storage'.
@@ -128,11 +128,12 @@ export function PositionsTable({
         }
 
         // 3. Total-drawdown kill switch -- compute NAV after the auto-
-        //    closes above, then either update the peak or trip the kill.
+        //    closes above. effectivePeakNav() persists the peak in
+        //    localStorage and treats capital as a floor, so a page reload
+        //    can't accidentally "reset" the drawdown calculation.
         const refreshed = listAll();
         const nav = currentNav(refreshed, map, config);
-        if (nav > peakNavRef.current) peakNavRef.current = nav;
-        const peak = peakNavRef.current || config.capital;
+        const peak = effectivePeakNav(nav, config.capital);
         const drawdownFromPeak = nav / peak - 1;
         const killAlready = getKillSwitchState().active;
         if (!killAlready && drawdownFromPeak <= -config.maxDrawdownTotal) {
