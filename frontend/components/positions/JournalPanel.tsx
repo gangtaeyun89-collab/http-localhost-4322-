@@ -23,6 +23,7 @@ import {
   type TaxLot,
 } from "@/lib/journal";
 import { type Position } from "@/lib/positions";
+import { NavAnalytics } from "./NavAnalytics";
 import { cn, fmtNum, fmtPct } from "@/lib/utils";
 
 // Reads journal state out of localStorage and renders:
@@ -100,6 +101,8 @@ export function JournalPanel({ positions }: { positions: Position[] }) {
           />
         </Panel>
       </div>
+
+      <NavAnalytics history={history} />
 
       <Panel title={`거래 일지 / Trade log · ${closed.length}`}>
         <TradeLog positions={closed} />

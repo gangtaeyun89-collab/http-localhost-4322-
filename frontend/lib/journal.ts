@@ -226,6 +226,167 @@ export function meanBacktestSharpe(k: number = 5): number {
   return refs.reduce((a, b) => a + b.sharpe, 0) / refs.length;
 }
 
+// -- Derived time series ----------------------------------------------------
+//
+// All of the analytics below operate on the same NavSnapshot[]. They are
+// pure functions so the components can call them once per render without
+// worrying about cache invalidation.
+
+export type DerivedPoint = {
+  date: string;
+  nav: number;
+  cumReturn: number; // NAV / initial capital - 1
+  dailyReturn: number; // NAV_t / NAV_{t-1} - 1
+  drawdown: number; // NAV_t / peak_t - 1 (<= 0)
+  rollingSharpe: number; // 30-day annualised
+};
+
+const ROLLING_WINDOW = 30;
+
+export function deriveTimeSeries(history: NavSnapshot[]): DerivedPoint[] {
+  if (history.length === 0) return [];
+  const capital = history[0].capital || 1;
+  const navs = history.map((s) => s.nav);
+  const dailyReturns: number[] = [];
+  for (let i = 0; i < navs.length; i++) {
+    if (i === 0 || navs[i - 1] <= 0) {
+      dailyReturns.push(0);
+    } else {
+      dailyReturns.push(navs[i] / navs[i - 1] - 1);
+    }
+  }
+  // Running peak for drawdown.
+  let peak = navs[0];
+  const drawdowns: number[] = [];
+  for (const v of navs) {
+    if (v > peak) peak = v;
+    drawdowns.push(peak > 0 ? v / peak - 1 : 0);
+  }
+  // Rolling-window Sharpe of daily returns, annualised to 252.
+  const rolling: number[] = [];
+  for (let i = 0; i < navs.length; i++) {
+    const start = Math.max(0, i - ROLLING_WINDOW + 1);
+    const slice = dailyReturns.slice(start, i + 1);
+    if (slice.length < 5) {
+      rolling.push(0);
+      continue;
+    }
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance =
+      slice.reduce((a, b) => a + (b - mean) ** 2, 0) / (slice.length - 1);
+    const std = Math.sqrt(variance);
+    rolling.push(std > 0 ? (mean / std) * Math.sqrt(252) : 0);
+  }
+  return history.map((s, i) => ({
+    date: s.date,
+    nav: navs[i],
+    cumReturn: navs[i] / capital - 1,
+    dailyReturn: dailyReturns[i],
+    drawdown: drawdowns[i],
+    rollingSharpe: rolling[i],
+  }));
+}
+
+export type AnalyticsSummary = {
+  bestDay: { date: string; ret: number } | null;
+  worstDay: { date: string; ret: number } | null;
+  hitRate: number; // share of days with return > 0
+  meanDailyReturn: number;
+  longestDrawdownDays: number;
+  currentDrawdownDays: number;
+};
+
+export function summariseAnalytics(
+  series: DerivedPoint[]
+): AnalyticsSummary {
+  if (series.length === 0) {
+    return {
+      bestDay: null,
+      worstDay: null,
+      hitRate: 0,
+      meanDailyReturn: 0,
+      longestDrawdownDays: 0,
+      currentDrawdownDays: 0,
+    };
+  }
+  // Skip the first day (its dailyReturn is 0 by construction).
+  const days = series.slice(1);
+  let best = days[0];
+  let worst = days[0];
+  let positives = 0;
+  let total = 0;
+  for (const d of days) {
+    if (!best || d.dailyReturn > best.dailyReturn) best = d;
+    if (!worst || d.dailyReturn < worst.dailyReturn) worst = d;
+    if (d.dailyReturn > 0) positives++;
+    total += d.dailyReturn;
+  }
+  // Longest underwater streak: consecutive days with drawdown < 0.
+  let longest = 0;
+  let cur = 0;
+  for (const d of series) {
+    if (d.drawdown < 0) {
+      cur++;
+      if (cur > longest) longest = cur;
+    } else {
+      cur = 0;
+    }
+  }
+  // Current streak: count back from the most recent point.
+  let currentStreak = 0;
+  for (let i = series.length - 1; i >= 0; i--) {
+    if (series[i].drawdown < 0) currentStreak++;
+    else break;
+  }
+  return {
+    bestDay: best ? { date: best.date, ret: best.dailyReturn } : null,
+    worstDay: worst ? { date: worst.date, ret: worst.dailyReturn } : null,
+    hitRate: days.length > 0 ? positives / days.length : 0,
+    meanDailyReturn: days.length > 0 ? total / days.length : 0,
+    longestDrawdownDays: longest,
+    currentDrawdownDays: currentStreak,
+  };
+}
+
+// -- Export helpers ---------------------------------------------------------
+
+export function navHistoryToCsv(history: NavSnapshot[]): string {
+  const series = deriveTimeSeries(history);
+  const header =
+    "date,nav,capital,realised,unrealised,open_pairs,cum_return,daily_return,drawdown,rolling_sharpe_30d";
+  const rows = series.map((d, i) => {
+    const snap = history[i];
+    return [
+      d.date,
+      d.nav.toFixed(2),
+      snap.capital.toFixed(2),
+      snap.realised.toFixed(6),
+      snap.unrealised.toFixed(6),
+      snap.openPairs,
+      d.cumReturn.toFixed(6),
+      d.dailyReturn.toFixed(6),
+      d.drawdown.toFixed(6),
+      d.rollingSharpe.toFixed(4),
+    ].join(",");
+  });
+  return [header, ...rows].join("\n");
+}
+
+export function navHistoryToJson(history: NavSnapshot[]): string {
+  return JSON.stringify(
+    {
+      exportedAt: new Date().toISOString(),
+      capital: history[0]?.capital ?? 0,
+      snapshots: history,
+      derived: deriveTimeSeries(history),
+      stats: computeLiveStats(),
+      summary: summariseAnalytics(deriveTimeSeries(history)),
+    },
+    null,
+    2
+  );
+}
+
 // -- Tax lot ledger ---------------------------------------------------------
 //
 // Paper-paper has no real tax lots, but the structure already exists --
