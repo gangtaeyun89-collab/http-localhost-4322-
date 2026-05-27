@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.config import settings
-from backend.app.routers import backtest, health, pairs, universes
+from backend.app.routers import backtest, health, pairs, sectors, universes
 
 app = FastAPI(
     title="Stat Arb API",
@@ -41,4 +41,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(universes.router)
 app.include_router(pairs.router)
+app.include_router(sectors.router)
 app.include_router(backtest.router)

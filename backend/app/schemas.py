@@ -189,6 +189,45 @@ class BacktestResult(BaseModel):
     source: str  # "csv" | "synthetic"
 
 
+# ---------------------------------------------------------------------------
+# Sector grid
+# ---------------------------------------------------------------------------
+
+
+class SectorPair(BaseModel):
+    id: str
+    base: str
+    quote: str
+    cointPValue: float
+    halfLife: float
+    corr: float
+
+
+class SectorSummary(BaseModel):
+    id: str
+    label: str
+    tickerCount: int
+    tickerCountTotal: int
+    pairCount: int
+    topPairs: list[SectorPair]
+
+
+class SectorsResponse(BaseModel):
+    sectors: list[SectorSummary]
+    source: str
+
+
+class SectorDetail(BaseModel):
+    id: str
+    label: str
+    tickers: list[str]
+    tickerCount: int
+    tickerCountTotal: int
+    pairCount: int
+    pairs: list[SectorPair]
+    source: str
+
+
 class UniverseInfo(BaseModel):
     name: str
     label: str

@@ -184,3 +184,49 @@ export async function postBacktestBrowser(
   }
   return (await res.json()) as BacktestResult;
 }
+
+// ---------------------------------------------------------------------------
+// Sectors
+// ---------------------------------------------------------------------------
+
+export type SectorPair = {
+  id: string;
+  base: string;
+  quote: string;
+  cointPValue: number;
+  halfLife: number;
+  corr: number;
+};
+
+export type SectorSummary = {
+  id: string;
+  label: string;
+  tickerCount: number;
+  tickerCountTotal: number;
+  pairCount: number;
+  topPairs: SectorPair[];
+};
+
+export type SectorsResponse = {
+  sectors: SectorSummary[];
+  source: "csv" | "synthetic";
+};
+
+export type SectorDetail = {
+  id: string;
+  label: string;
+  tickers: string[];
+  tickerCount: number;
+  tickerCountTotal: number;
+  pairCount: number;
+  pairs: SectorPair[];
+  source: "csv" | "synthetic";
+};
+
+export async function fetchSectors(): Promise<SectorsResponse> {
+  return getJSON<SectorsResponse>("/api/sectors");
+}
+
+export async function fetchSectorDetail(id: string): Promise<SectorDetail> {
+  return getJSON<SectorDetail>(`/api/sectors/${encodeURIComponent(id)}`);
+}
