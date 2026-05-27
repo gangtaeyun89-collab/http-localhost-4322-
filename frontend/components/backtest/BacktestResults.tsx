@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   Bar,
   BarChart,
@@ -13,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import type { BacktestResult } from "@/lib/api";
+import { recordBacktestSharpe } from "@/lib/journal";
 import { cn, fmtNum, fmtPct } from "@/lib/utils";
 import { Panel } from "@/components/pair/Panel";
 
@@ -24,6 +26,18 @@ import { Panel } from "@/components/pair/Panel";
 export function BacktestResults({ result }: { result: BacktestResult }) {
   const { stats, windows, equity } = result;
   const overfitVerdict = verdictForGap(result.overfitGap);
+
+  // Record the OOS Sharpe so the journal's "live vs backtest" card has
+  // something honest to compare against. Recorded per result (the same
+  // backtest re-run will overwrite the head of the list).
+  useEffect(() => {
+    recordBacktestSharpe({
+      sharpe: stats.sharpe,
+      recordedAt: Date.now(),
+      base: result.request.base,
+      quote: result.request.quote,
+    });
+  }, [stats.sharpe, result.request.base, result.request.quote]);
 
   return (
     <div className="flex flex-col">

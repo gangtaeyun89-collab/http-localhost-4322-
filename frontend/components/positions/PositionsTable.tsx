@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { fetchPairQuotesBrowser, type PairQuote } from "@/lib/api";
+import { recordSnapshot } from "@/lib/journal";
 import {
   barsElapsed,
   closePosition,
@@ -16,6 +17,14 @@ import {
   STOP_Z,
   type Position,
 } from "@/lib/positions";
+import {
+  cumulativeRealised,
+  currentNav,
+  getKillSwitchState,
+  getRiskConfig,
+  pairsBreachingStop,
+  tripKillSwitch,
+} from "@/lib/risk";
 import { cn, fmtNum, fmtPct } from "@/lib/utils";
 
 // Active + closed positions, hypothetical P&L computed against the latest
@@ -26,13 +35,18 @@ import { cn, fmtNum, fmtPct } from "@/lib/utils";
 // past stop_z -> stop, held longer than 3 half-lives -> time stop. Manual
 // close is a button on each row.
 
-export function PositionsTable() {
+export function PositionsTable({
+  onTick,
+}: {
+  onTick?: (positions: Position[], quotes: Record<string, PairQuote>) => void;
+} = {}) {
   const [tick, setTick] = useState(0); // forces re-render after each poll
   const [positions, setPositions] = useState<Position[]>([]);
   const [quotes, setQuotes] = useState<Record<string, PairQuote>>({});
   const [lastPoll, setLastPoll] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const closingRef = useRef<Set<string>>(new Set());
+  const peakNavRef = useRef<number>(0);
 
   // Mirror localStorage into React state. Updates from this tab fire a
   // custom event; updates from other tabs fire 'storage'.
@@ -87,6 +101,9 @@ export function PositionsTable() {
         // Auto-close pass. Use a ref'd "currently closing" set so a slow
         // setPositions doesn't cause us to fire close twice on the same id.
         const current = listAll();
+        const config = getRiskConfig();
+
+        // 1. z-score / time auto-close (mean-reversion rule)
         for (const p of current) {
           if (p.status !== "open") continue;
           const q = map[p.pairId];
@@ -98,6 +115,48 @@ export function PositionsTable() {
             closePosition(p.id, q, reason);
           }
         }
+
+        // 2. Per-pair max-loss stop -- force close pairs that have lost
+        //    more than maxLossPerPair as a fraction of capital.
+        const openLive = current.filter((p) => p.status === "open");
+        for (const p of pairsBreachingStop(openLive, map, config)) {
+          if (closingRef.current.has(p.id)) continue;
+          const q = map[p.pairId];
+          if (!q) continue;
+          closingRef.current.add(p.id);
+          closePosition(p.id, q, "stop");
+        }
+
+        // 3. Total-drawdown kill switch -- compute NAV after the auto-
+        //    closes above, then either update the peak or trip the kill.
+        const refreshed = listAll();
+        const nav = currentNav(refreshed, map, config);
+        if (nav > peakNavRef.current) peakNavRef.current = nav;
+        const peak = peakNavRef.current || config.capital;
+        const drawdownFromPeak = nav / peak - 1;
+        const killAlready = getKillSwitchState().active;
+        if (!killAlready && drawdownFromPeak <= -config.maxDrawdownTotal) {
+          tripKillSwitch(
+            `drawdown ${(drawdownFromPeak * 100).toFixed(2)}% from peak`,
+            nav,
+            peak
+          );
+          // Close every open position at the current snapshot.
+          for (const p of refreshed) {
+            if (p.status !== "open") continue;
+            if (closingRef.current.has(p.id)) continue;
+            const q = map[p.pairId];
+            if (!q) continue;
+            closingRef.current.add(p.id);
+            closePosition(p.id, q, "stop");
+          }
+        }
+
+        // 4. NAV snapshot for the daily history + bubble the tick up so
+        //    the parent page can drive any sibling panels.
+        const finalPositions = listAll();
+        recordSnapshot(finalPositions, map);
+        if (onTick) onTick(finalPositions, map);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -110,7 +169,7 @@ export function PositionsTable() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [openIds]);
+  }, [openIds, onTick]);
 
   return (
     <div className="flex flex-col">

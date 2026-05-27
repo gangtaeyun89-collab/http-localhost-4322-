@@ -7,10 +7,12 @@ import { fetchPairQuoteBrowser, type PairQuote } from "@/lib/api";
 import {
   closePosition,
   findOpenByPair,
+  listAll,
   openPosition,
   positionPnl,
   type Position,
 } from "@/lib/positions";
+import { canEnter, getRiskConfig, type EntryGate } from "@/lib/risk";
 import { cn, fmtPct } from "@/lib/utils";
 
 // Pair-workbench affordance for opening / closing a paper-paper position.
@@ -23,16 +25,22 @@ export function PositionToggle({ pairId }: { pairId: string }) {
   const [quote, setQuote] = useState<PairQuote | null>(null);
   const [position, setPosition] = useState<Position | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [gate, setGate] = useState<EntryGate>({ allowed: true });
 
   // Mirror localStorage; refresh on cross-tab + in-tab events.
   useEffect(() => {
-    const refresh = () => setPosition(findOpenByPair(pairId));
+    const refresh = () => {
+      setPosition(findOpenByPair(pairId));
+      setGate(canEnter(listAll(), getRiskConfig()));
+    };
     refresh();
     window.addEventListener("storage", refresh);
     window.addEventListener("statarb.positions.update", refresh);
+    window.addEventListener("statarb.risk.update", refresh);
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("statarb.positions.update", refresh);
+      window.removeEventListener("statarb.risk.update", refresh);
     };
   }, [pairId]);
 
@@ -56,6 +64,7 @@ export function PositionToggle({ pairId }: { pairId: string }) {
 
   async function enter(side: Position["side"]) {
     if (!quote) return;
+    if (!gate.allowed) return;
     setBusy(true);
     try {
       openPosition({ pairId, side, quote });
@@ -131,18 +140,21 @@ export function PositionToggle({ pairId }: { pairId: string }) {
   // bet -- but the highlight nudges the right one.
   const longRecommended = z <= -2;
   const shortRecommended = z >= 2;
+  const disabled = busy || !gate.allowed;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5">
+    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5">
       <span className="text-2xs uppercase tracking-widest text-text-muted">
         가상 진입
       </span>
       <button
         onClick={() => enter("long_spread")}
-        disabled={busy}
+        disabled={disabled}
         className={cn(
           "rounded border px-2 py-1 text-2xs uppercase tracking-widest",
-          longRecommended
+          disabled
+            ? "cursor-not-allowed border-border-subtle bg-bg-card/40 text-text-faint"
+            : longRecommended
             ? "border-accent-green/60 bg-accent-green/15 text-accent-green hover:bg-accent-green/25"
             : "border-border-subtle bg-bg-card text-text-secondary hover:bg-bg-elevated"
         )}
@@ -152,10 +164,12 @@ export function PositionToggle({ pairId }: { pairId: string }) {
       </button>
       <button
         onClick={() => enter("short_spread")}
-        disabled={busy}
+        disabled={disabled}
         className={cn(
           "rounded border px-2 py-1 text-2xs uppercase tracking-widest",
-          shortRecommended
+          disabled
+            ? "cursor-not-allowed border-border-subtle bg-bg-card/40 text-text-faint"
+            : shortRecommended
             ? "border-accent-red/60 bg-accent-red/15 text-accent-red hover:bg-accent-red/25"
             : "border-border-subtle bg-bg-card text-text-secondary hover:bg-bg-elevated"
         )}
@@ -163,6 +177,11 @@ export function PositionToggle({ pairId }: { pairId: string }) {
       >
         SHORT SPREAD
       </button>
+      {!gate.allowed && (
+        <span className="text-2xs text-accent-red">
+          진입 차단: {gate.reason}
+        </span>
+      )}
     </div>
   );
 }

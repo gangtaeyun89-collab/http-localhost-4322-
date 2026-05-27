@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { PositionsTable } from "@/components/positions/PositionsTable";
+import { PositionsWorkbench } from "@/components/positions/PositionsWorkbench";
 
 // Paper-paper journal. Stored entirely in the browser; no IBKR orders
 // are placed. Wire to real fills in Phase 4 by swapping the lib/positions
@@ -9,7 +9,7 @@ export default function EquityPositionsPage() {
   return (
     <AppShell market="equity">
       <PageHeader />
-      <PositionsTable />
+      <PositionsWorkbench />
     </AppShell>
   );
 }
@@ -23,7 +23,7 @@ function PageHeader() {
         </div>
         <span className="text-text-faint">·</span>
         <span className="text-xs text-text-secondary">
-          가상 진입 추적 · 자동 청산 시뮬레이션
+          가상 진입 추적 · 자동 청산 · risk limits · 회계 일지
         </span>
       </div>
       <div className="text-2xs uppercase tracking-widest text-text-faint">
