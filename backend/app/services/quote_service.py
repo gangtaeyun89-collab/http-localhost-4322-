@@ -104,6 +104,7 @@ def _compute_quote(base: str, quote: str) -> dict:
         "lastReturn": last_ret,
         "halfLife": _safe(basics.half_life),
         "pvalue": _safe(basics.pvalue, 1.0),
+        "hedgeRatio": _safe(basics.hedge_ratio, 1.0),
         "signal": signal,
         "source": universe_source(),  # "csv" or "synthetic"
     }
@@ -140,6 +141,7 @@ def get_quotes(pairs: list[tuple[str, str]]) -> list[dict]:
                     "lastReturn": {"base": 0.0, "quote": 0.0},
                     "halfLife": 0.0,
                     "pvalue": 1.0,
+                    "hedgeRatio": 1.0,
                     "signal": "flat",
                     "source": "error",
                     "error": str(exc),

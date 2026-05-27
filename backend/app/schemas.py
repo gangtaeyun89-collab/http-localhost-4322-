@@ -118,6 +118,7 @@ class PairQuote(BaseModel):
     lastReturn: QuoteReturn
     halfLife: float
     pvalue: float
+    hedgeRatio: float
     signal: str  # "flat" | "long_spread" | "short_spread"
     source: str  # "csv" | "synthetic" | "error"
 

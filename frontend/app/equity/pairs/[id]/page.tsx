@@ -4,6 +4,7 @@ import { LivePulse } from "@/components/pair/LivePulse";
 import { Panel } from "@/components/pair/Panel";
 import { CumReturnsChart } from "@/components/pair/CumReturnsChart";
 import { LiveZScoreChart } from "@/components/pair/LiveZScoreChart";
+import { PositionToggle } from "@/components/pair/PositionToggle";
 import { ZScoreChart } from "@/components/pair/ZScoreChart";
 import { CorrelationChart } from "@/components/pair/CorrelationChart";
 import { CopulaChart } from "@/components/pair/CopulaChart";
@@ -48,6 +49,11 @@ export default async function EquityPairAnalysisPage({
         source={source}
         pairId={params.id}
       />
+      {source === "api" && (
+        <div className="border-b border-border-subtle bg-bg-panel">
+          <PositionToggle pairId={params.id} />
+        </div>
+      )}
       <KPIBar kpis={kpis} />
 
       <div className="grid grid-cols-1 gap-px bg-border-subtle p-px lg:grid-cols-2">

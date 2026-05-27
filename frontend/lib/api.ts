@@ -77,6 +77,7 @@ export type PairQuote = {
   lastReturn: { base: number; quote: number };
   halfLife: number;
   pvalue: number;
+  hedgeRatio: number;
   signal: "flat" | "long_spread" | "short_spread";
   source: "csv" | "synthetic" | "error";
 };
